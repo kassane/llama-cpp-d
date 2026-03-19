@@ -67,6 +67,7 @@ struct LlamaModel
 
     @property bool hasEncoder() @nogc nothrow { return llama_model_has_encoder(_model); } /// True for encoder-decoder models (e.g. T5).
     @property bool hasDecoder() @nogc nothrow { return llama_model_has_decoder(_model); }
+    @property bool isRecurrent() @nogc nothrow { return llama_model_is_recurrent(_model); } /// True for recurrent models (Mamba, RWKV, etc.).
 
     /// Start token for the decoder; falls back to BOS for encoder-decoder models.
     @property llama_token decoderStartToken() @nogc nothrow
@@ -75,5 +76,57 @@ struct LlamaModel
         if (t == LLAMA_TOKEN_NULL)
             t = llama_vocab_bos(cast(llama_vocab*) llama_model_get_vocab(_model));
         return t;
+    }
+
+    @property int    nCtxTrain() @nogc nothrow { return llama_model_n_ctx_train(_model); } /// Training context length.
+    @property ulong  nParams()   @nogc nothrow { return llama_model_n_params(_model); }    /// Total parameter count.
+    @property ulong  size()      @nogc nothrow { return llama_model_size(_model); }        /// Model size in bytes.
+
+    /// Short description string (architecture + size).
+    @property string desc() @trusted
+    {
+        char[256] buf;
+        int n = llama_model_desc(_model, buf.ptr, buf.length);
+        return n > 0 ? buf[0 .. n].idup : "";
+    }
+
+    /++
+    Jinja chat template embedded in the model (or the named variant).
+    Returns `null` if none is available.
+    Pass `name = null` for the default template.
+    +/
+    const(char)* chatTemplate(const(char)* name = null) @trusted @nogc nothrow
+    {
+        return llama_model_chat_template(_model, name);
+    }
+
+    // ── Metadata access ───────────────────────────────────────────────────────
+
+    /// Number of key/value metadata pairs.
+    @property int metaCount() @nogc nothrow { return llama_model_meta_count(_model); }
+
+    /// Metadata key name at `index`. Returns `""` on failure.
+    string metaKeyAt(int index) @trusted
+    {
+        char[512] buf;
+        int n = llama_model_meta_key_by_index(_model, index, buf.ptr, buf.length);
+        return n >= 0 ? buf[0 .. n].idup : "";
+    }
+
+    /// Metadata value (as string) at `index`. Returns `""` on failure.
+    string metaValAt(int index) @trusted
+    {
+        char[4096] buf;
+        int n = llama_model_meta_val_str_by_index(_model, index, buf.ptr, buf.length);
+        return n >= 0 ? buf[0 .. n].idup : "";
+    }
+
+    /// Metadata value (as string) for the given `key`. Returns `""` on failure.
+    string metaVal(string key) @trusted
+    {
+        import std.string : toStringz;
+        char[4096] buf;
+        int n = llama_model_meta_val_str(_model, key.toStringz, buf.ptr, buf.length);
+        return n >= 0 ? buf[0 .. n].idup : "";
     }
 }

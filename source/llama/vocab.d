@@ -53,6 +53,47 @@ string detokenize(const(llama_vocab)* vocab, const(llama_token)[] tokens,
 llama_token bosToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_bos(mutableVocab(vocab)); } /// BOS token.
 llama_token eosToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_eos(mutableVocab(vocab)); } /// EOS token.
 llama_token eotToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_eot(mutableVocab(vocab)); } /// EOT (end-of-turn) token.
+llama_token nlToken (const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_nl (mutableVocab(vocab)); } /// Newline token.
+llama_token padToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_pad(mutableVocab(vocab)); } /// Padding token.
+llama_token sepToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_sep(mutableVocab(vocab)); } /// Sentence separator token.
+
+// Fill-in-the-Middle special tokens.
+llama_token fimPreToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_fim_pre(mutableVocab(vocab)); } /// FIM prefix token.
+llama_token fimSufToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_fim_suf(mutableVocab(vocab)); } /// FIM suffix token.
+llama_token fimMidToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_fim_mid(mutableVocab(vocab)); } /// FIM middle token.
+llama_token fimPadToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_fim_pad(mutableVocab(vocab)); } /// FIM padding token.
+llama_token fimRepToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_fim_rep(mutableVocab(vocab)); } /// FIM repo token.
+llama_token fimSepToken(const(llama_vocab)* vocab) @trusted @nogc nothrow { return llama_vocab_fim_sep(mutableVocab(vocab)); } /// FIM separator token.
+
+/// Vocabulary type as int (compare to `LLAMA_VOCAB_TYPE_*` constants).
+int vocabType(const(llama_vocab)* vocab) @trusted @nogc nothrow
+{
+    return cast(int) llama_vocab_type(mutableVocab(vocab));
+}
+
+/// Raw text piece for a token (pointer into model memory; do not free).
+const(char)* tokenText(const(llama_vocab)* vocab, llama_token token) @trusted @nogc nothrow
+{
+    return llama_vocab_get_text(mutableVocab(vocab), token);
+}
+
+/// Log-probability score stored for a token in the vocab.
+float tokenScore(const(llama_vocab)* vocab, llama_token token) @trusted @nogc nothrow
+{
+    return llama_vocab_get_score(mutableVocab(vocab), token);
+}
+
+/// Token attribute flags (control, normal, byte, etc.).
+llama_token_attr tokenAttr(const(llama_vocab)* vocab, llama_token token) @trusted @nogc nothrow
+{
+    return llama_vocab_get_attr(mutableVocab(vocab), token);
+}
+
+/// True if the token is a control token (not renderable text).
+bool isControl(const(llama_vocab)* vocab, llama_token token) @trusted @nogc nothrow
+{
+    return llama_vocab_is_control(mutableVocab(vocab), token);
+}
 
 /// True if the token signals end of generation.
 bool isEog(const(llama_vocab)* vocab, llama_token token) @trusted @nogc nothrow

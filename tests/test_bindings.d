@@ -63,6 +63,71 @@ unittest
     auto _27 = &llama_model_has_decoder;
 }
 
+@("llama_* new API symbols are reachable")
+unittest
+{
+    // Context / memory / state
+    auto _0  = &llama_get_memory;
+    auto _1  = &llama_memory_seq_rm;
+    auto _2  = &llama_memory_seq_cp;
+    auto _3  = &llama_memory_seq_keep;
+    auto _4  = &llama_memory_seq_add;
+    auto _5  = &llama_memory_seq_div;
+    auto _6  = &llama_memory_seq_pos_min;
+    auto _7  = &llama_memory_seq_pos_max;
+    auto _8  = &llama_memory_can_shift;
+    auto _9  = &llama_state_get_size;
+    auto _10 = &llama_state_get_data;
+    auto _11 = &llama_state_set_data;
+    auto _12 = &llama_state_load_file;
+    auto _13 = &llama_state_save_file;
+    auto _14 = &llama_get_embeddings;
+    auto _15 = &llama_get_embeddings_ith;
+    auto _16 = &llama_get_embeddings_seq;
+    // Chat
+    auto _17 = &llama_chat_apply_template;
+    auto _18 = &llama_chat_builtin_templates;
+    // Adapter / LoRA
+    auto _19 = &llama_adapter_lora_init;
+    auto _20 = &llama_adapter_lora_free;
+    auto _21 = &llama_set_adapters_lora;
+    // Model metadata
+    auto _22 = &llama_model_n_ctx_train;
+    auto _23 = &llama_model_n_params;
+    auto _24 = &llama_model_size;
+    auto _25 = &llama_model_desc;
+    auto _26 = &llama_model_chat_template;
+    auto _27 = &llama_model_is_recurrent;
+    auto _28 = &llama_model_meta_count;
+    auto _29 = &llama_model_meta_key_by_index;
+    auto _30 = &llama_model_meta_val_str;
+    auto _31 = &llama_model_meta_val_str_by_index;
+    // Vocab extras
+    auto _32 = &llama_vocab_nl;
+    auto _33 = &llama_vocab_pad;
+    auto _34 = &llama_vocab_sep;
+    auto _35 = &llama_vocab_fim_pre;
+    auto _36 = &llama_vocab_fim_suf;
+    auto _37 = &llama_vocab_fim_mid;
+    auto _38 = &llama_vocab_fim_pad;
+    auto _39 = &llama_vocab_fim_rep;
+    auto _40 = &llama_vocab_fim_sep;
+    auto _41 = &llama_vocab_get_text;
+    auto _42 = &llama_vocab_get_score;
+    auto _43 = &llama_vocab_get_attr;
+    auto _44 = &llama_vocab_is_control;
+    // Samplers
+    auto _45 = &llama_sampler_init_penalties;
+    auto _46 = &llama_sampler_init_typical;
+    auto _47 = &llama_sampler_init_temp_ext;
+    auto _48 = &llama_sampler_init_top_n_sigma;
+    auto _49 = &llama_sampler_init_xtc;
+    auto _50 = &llama_sampler_init_mirostat_v2;
+    auto _51 = &llama_sampler_init_grammar;
+    auto _52 = &llama_sampler_init_dry;
+    auto _53 = &llama_sampler_init_logit_bias;
+}
+
 @("ggml_* symbols are reachable")
 unittest
 {
@@ -336,4 +401,244 @@ unittest
     const(char)* m = mtmd_default_marker();
     assert(m !is null);
     assert(strlen(m) > 0);
+}
+
+// ---------------------------------------------------------------------------
+// SamplerChain: new methods (chain construction — no model required)
+// ---------------------------------------------------------------------------
+
+@("SamplerChain: penalties chain construction")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.penalties(64, 1.1f, 0.0f, 0.0f).dist();
+}
+
+@("SamplerChain: penalties — disable via zero penalty_last_n")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.penalties(0).dist();
+}
+
+@("SamplerChain: typical sampling")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.temp(1.0f).typical(0.95f).dist();
+}
+
+@("SamplerChain: tempExt (dynamic temperature)")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.tempExt(0.8f, 0.5f, 1.5f).dist();
+}
+
+@("SamplerChain: topNSigma")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.topNSigma(2.0f).dist();
+}
+
+@("SamplerChain: xtc")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.xtc(0.1f, 0.1f, 1, LLAMA_DEFAULT_SEED).dist();
+}
+
+@("SamplerChain: mirostatV2")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.mirostatV2(5.0f, 0.1f, LLAMA_DEFAULT_SEED);
+}
+
+@("SamplerChain: logitBias with empty slice")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    // Empty bias list is a no-op — should not crash.
+    smpl.logitBias(32_000, []).dist();
+}
+
+@("SamplerChain: logitBias with explicit entries")
+@trusted unittest
+{
+    auto smpl = SamplerChain.create();
+    llama_logit_bias[2] biases;
+    biases[0].token = 1; biases[0].bias = -100.0f;
+    biases[1].token = 2; biases[1].bias =   10.0f;
+    smpl.logitBias(32_000, biases[]).dist();
+}
+
+@("SamplerChain: combined chain with penalties + typical + tempExt")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.penalties(64, 1.1f).typical(0.9f).tempExt(0.8f, 0.0f, 1.0f).dist();
+}
+
+// ---------------------------------------------------------------------------
+// chat.d
+// ---------------------------------------------------------------------------
+
+@("chat: llama_chat_message struct layout")
+@trusted unittest
+{
+    import llama.chat;
+    static assert(is(llama_chat_message == struct));
+    llama_chat_message msg = {};
+    msg.role    = "user";
+    msg.content = "Hello";
+    assert(msg.role    !is null);
+    assert(msg.content !is null);
+}
+
+@("chat: builtinTemplates returns a non-empty list of named templates")
+unittest
+{
+    import llama.chat : builtinTemplates;
+    auto templates = builtinTemplates();
+    assert(templates.length > 0, "at least one built-in template must exist");
+    foreach (name; templates)
+        assert(name.length > 0, "template name must be non-empty");
+}
+
+@("chat: chatApplyTemplate with known template and single message")
+@trusted unittest
+{
+    import llama.chat : builtinTemplates, chatApplyTemplate;
+    import std.string : toStringz;
+
+    // Use the first available built-in template by its name.
+    auto names = builtinTemplates();
+    assert(names.length > 0);
+
+    // Build a minimal conversation.
+    llama_chat_message[1] msgs;
+    msgs[0].role    = "user";
+    msgs[0].content = "Hello";
+
+    char[1024] buf;
+    // Pass the template name as the tmpl string (llama.cpp accepts name aliases).
+    int n = chatApplyTemplate(names[0].toStringz, msgs[], /*addAss=*/false, buf[]);
+    // A negative return means unsupported — but since we used a built-in name it should succeed.
+    assert(n > 0, "chatApplyTemplate should return byte count > 0 for a valid template");
+}
+
+@("chat: applyTemplate auto-resizes buffer and returns a D string")
+@trusted unittest
+{
+    import llama.chat : builtinTemplates, applyTemplate;
+    import std.string : toStringz;
+
+    auto names = builtinTemplates();
+    assert(names.length > 0);
+
+    llama_chat_message[2] msgs;
+    msgs[0].role = "user";    msgs[0].content = "What is 2+2?";
+    msgs[1].role = "assistant"; msgs[1].content = "4";
+
+    string result = applyTemplate(names[0].toStringz, msgs[], /*addAss=*/true);
+    assert(result.length > 0, "applyTemplate must return a non-empty string");
+}
+
+// ---------------------------------------------------------------------------
+// adapter.d
+// ---------------------------------------------------------------------------
+
+@("adapter: LlamaAdapterLora is a struct")
+unittest
+{
+    import llama.adapter : LlamaAdapterLora;
+    static assert(is(LlamaAdapterLora == struct));
+}
+
+@("adapter: setAdaptersLora function is reachable")
+unittest
+{
+    import llama.adapter : setAdaptersLora;
+    // Just verify the symbol resolves; calling it would require a live context.
+    static assert(__traits(compiles, &setAdaptersLora));
+}
+
+@("adapter: loadAdapterLora with nonexistent path returns falsy")
+unittest
+{
+    import llama.adapter : LlamaAdapterLora, loadAdapterLora;
+    loadAllBackends();
+    auto model = LlamaModel.loadFromFile("/nonexistent/model.gguf");
+    // model is null — loadAdapterLora must not crash; llama_adapter_lora_init
+    // returns null for a null model path even if the model ptr itself is null.
+    // Guard: only call if model loaded.
+    if (!model) return; // expected path in CI — no model file available
+    auto adapter = loadAdapterLora(model, "/nonexistent/lora.gguf");
+    assert(!adapter, "Non-existent LoRA path must yield a null adapter");
+}
+
+// ---------------------------------------------------------------------------
+// LlamaModel: new properties (compile-level; null-model guards)
+// ---------------------------------------------------------------------------
+
+@("LlamaModel: isRecurrent / nCtxTrain / nParams / size — symbols resolve")
+unittest
+{
+    // These properties delegate to llama_model_* C calls.
+    // We can only verify they exist and compile; calling on a null model crashes.
+    static assert(__traits(hasMember, LlamaModel, "isRecurrent"));
+    static assert(__traits(hasMember, LlamaModel, "nCtxTrain"));
+    static assert(__traits(hasMember, LlamaModel, "nParams"));
+    static assert(__traits(hasMember, LlamaModel, "size"));
+    static assert(__traits(hasMember, LlamaModel, "desc"));
+    static assert(__traits(hasMember, LlamaModel, "chatTemplate"));
+    static assert(__traits(hasMember, LlamaModel, "metaCount"));
+    static assert(__traits(hasMember, LlamaModel, "metaKeyAt"));
+    static assert(__traits(hasMember, LlamaModel, "metaValAt"));
+    static assert(__traits(hasMember, LlamaModel, "metaVal"));
+}
+
+// ---------------------------------------------------------------------------
+// LlamaContext: new properties compile check
+// ---------------------------------------------------------------------------
+
+@("LlamaContext: new properties — symbols resolve")
+unittest
+{
+    static assert(__traits(hasMember, LlamaContext, "poolingType"));
+    static assert(__traits(hasMember, LlamaContext, "memory"));
+    static assert(__traits(hasMember, LlamaContext, "getEmbeddings"));
+    static assert(__traits(hasMember, LlamaContext, "getEmbeddingsIth"));
+    static assert(__traits(hasMember, LlamaContext, "getEmbeddingsSeq"));
+    static assert(__traits(hasMember, LlamaContext, "stateGetSize"));
+    static assert(__traits(hasMember, LlamaContext, "stateGetData"));
+    static assert(__traits(hasMember, LlamaContext, "stateSetData"));
+    static assert(__traits(hasMember, LlamaContext, "stateSaveFile"));
+    static assert(__traits(hasMember, LlamaContext, "stateLoadFile"));
+}
+
+// ---------------------------------------------------------------------------
+// vocab.d: new free functions compile check
+// ---------------------------------------------------------------------------
+
+@("vocab: new token helper functions — symbols resolve")
+unittest
+{
+    // Verify the D wrapper symbols exist. Calling them requires a live vocab.
+    static assert(__traits(compiles, &nlToken));
+    static assert(__traits(compiles, &padToken));
+    static assert(__traits(compiles, &sepToken));
+    static assert(__traits(compiles, &fimPreToken));
+    static assert(__traits(compiles, &fimSufToken));
+    static assert(__traits(compiles, &fimMidToken));
+    static assert(__traits(compiles, &fimPadToken));
+    static assert(__traits(compiles, &fimRepToken));
+    static assert(__traits(compiles, &fimSepToken));
+    static assert(__traits(compiles, &vocabType));
+    static assert(__traits(compiles, &tokenText));
+    static assert(__traits(compiles, &tokenScore));
+    static assert(__traits(compiles, &tokenAttr));
+    static assert(__traits(compiles, &isControl));
 }
