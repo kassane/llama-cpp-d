@@ -8,7 +8,7 @@ private llama_vocab* mutableVocab(const(llama_vocab)* vocab) @trusted @nogc noth
     return cast(llama_vocab*) vocab;
 }
 
-/// Tokenizes `text` into a GC-allocated token slice.
+/// Split `text` into tokens. Returns a GC-allocated slice.
 llama_token[] tokenize(const(llama_vocab)* vocab, const(char)[] text,
                        bool addSpecial = true, bool parseSpecial = true) @trusted
 {
@@ -22,7 +22,7 @@ llama_token[] tokenize(const(llama_vocab)* vocab, const(char)[] text,
     return result < 0 ? null : tokens[0 .. result];
 }
 
-/// Token to its string piece.
+/// The string piece for a single token.
 string tokenToString(const(llama_vocab)* vocab, llama_token token) @trusted
 {
     char[256] buf;
@@ -30,7 +30,7 @@ string tokenToString(const(llama_vocab)* vocab, llama_token token) @trusted
     return n < 0 ? null : buf[0 .. n].idup;
 }
 
-/// Converts a token sequence back to a string.
+/// Decode a token sequence back into text.
 string detokenize(const(llama_vocab)* vocab, const(llama_token)[] tokens,
                   bool removeSpecial = false, bool unparseSpecial = false) @trusted
 {

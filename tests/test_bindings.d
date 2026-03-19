@@ -208,3 +208,132 @@ unittest
     static assert(is(llama_sampler_deleter == struct));
     static assert(is(llama_adapter_lora_deleter == struct));
 }
+
+// ---------------------------------------------------------------------------
+// mtmd (multimodal) — C binding symbol reachability
+// ---------------------------------------------------------------------------
+
+@("mtmd C symbols are reachable")
+unittest
+{
+    import llama.mtmd;
+
+    auto _0  = &mtmd_default_marker;
+    auto _1  = &mtmd_context_params_default;
+    auto _2  = &mtmd_init_from_file;
+    auto _3  = &mtmd_free;
+    auto _4  = &mtmd_bitmap_init;
+    auto _5  = &mtmd_bitmap_init_from_audio;
+    auto _6  = &mtmd_bitmap_free;
+    auto _7  = &mtmd_input_chunks_init;
+    auto _8  = &mtmd_input_chunks_size;
+    auto _9  = &mtmd_input_chunks_free;
+    auto _10 = &mtmd_tokenize;
+    auto _11 = &mtmd_encode_chunk;
+    auto _12 = &mtmd_get_output_embd;
+    auto _13 = &mtmd_helper_bitmap_init_from_file;
+    auto _14 = &mtmd_helper_bitmap_init_from_buf;
+    auto _15 = &mtmd_helper_get_n_tokens;
+    auto _16 = &mtmd_helper_get_n_pos;
+    auto _17 = &mtmd_helper_eval_chunks;
+}
+
+@("mtmd_context_params_default: returns without crash")
+unittest
+{
+    import llama.mtmd : mtmd_context_params_default;
+    auto p = mtmd_context_params_default();
+    // n_threads should be a sane non-negative value (or 0 = auto)
+    assert(p.n_threads >= 0);
+}
+
+// ---------------------------------------------------------------------------
+// MtmdBitmap RAII wrapper
+// ---------------------------------------------------------------------------
+
+@("MtmdBitmap: fromRGB creates valid bitmap with correct dimensions")
+unittest
+{
+    import llama.mtmd : MtmdBitmap;
+    ubyte[12] rgb; // 2×2 RGB image (all zeros)
+    auto bmp = MtmdBitmap.fromRGB(2, 2, rgb[]);
+    assert(cast(bool) bmp);
+    assert(bmp.nx == 2);
+    assert(bmp.ny == 2);
+    assert(!bmp.isAudio);
+    assert(bmp.data.length == 12);
+}
+
+@("MtmdBitmap: fromAudio creates valid audio bitmap")
+unittest
+{
+    import llama.mtmd : MtmdBitmap;
+    float[16_000] pcm; // 1 second at 16kHz
+    auto bmp = MtmdBitmap.fromAudio(pcm[]);
+    assert(cast(bool) bmp);
+    assert(bmp.isAudio);
+}
+
+@("MtmdBitmap: ptr is non-null after create")
+unittest
+{
+    import llama.mtmd : MtmdBitmap;
+    ubyte[3] px = [255, 0, 0]; // 1×1 red pixel
+    auto bmp = MtmdBitmap.fromRGB(1, 1, px[]);
+    assert(bmp.ptr !is null);
+}
+
+// ---------------------------------------------------------------------------
+// InputChunks RAII + range
+// ---------------------------------------------------------------------------
+
+@("InputChunks: create returns empty chunk list")
+unittest
+{
+    import llama.mtmd : InputChunks;
+    auto chunks = InputChunks.create();
+    assert(chunks.length == 0);
+    assert(chunks.empty);
+}
+
+@("InputChunks: opApply over empty list iterates zero times")
+unittest
+{
+    import llama.mtmd : InputChunks;
+    auto chunks = InputChunks.create();
+    int count;
+    foreach (chunk; chunks) count++;
+    assert(count == 0);
+}
+
+@("InputChunks: nTokens and nPos are zero for empty list")
+unittest
+{
+    import llama.mtmd : InputChunks;
+    auto chunks = InputChunks.create();
+    assert(chunks.nTokens == 0);
+    assert(chunks.nPos == 0);
+}
+
+// ---------------------------------------------------------------------------
+// MtmdContext RAII wrapper
+// ---------------------------------------------------------------------------
+
+@("MtmdContext: initFromFile with nonexistent path returns falsy")
+unittest
+{
+    import llama.mtmd : MtmdContext;
+    // null text_model is enough to make mtmd_init_from_file fail fast
+    auto ctx = MtmdContext.initFromFile("/nonexistent/mmproj.gguf", null);
+    assert(!ctx, "Init from nonexistent file must yield a null context");
+}
+
+@("MtmdContext: default marker is non-empty C string")
+unittest
+{
+    import llama.mtmd : mtmd_default_marker;
+    import core.stdc.string : strlen;
+    const(char)* m = mtmd_default_marker();
+    assert(m !is null);
+    assert(strlen(m) > 0);
+}

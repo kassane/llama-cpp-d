@@ -3,8 +3,7 @@ module llama.ctx;
 import llama.llama;
 import llama.model : LlamaModel;
 
-/// Returns context params with the given window size and batch size; everything else at defaults.
-/// Pass `nCtx = 0` to use the model's training context length.
+/++ Context params with the given window and batch size. `nCtx = 0` uses the model's training length. +/
 llama_context_params contextParams(uint nCtx = 0, uint nBatch = 512, bool noPerf = false) @nogc nothrow
 {
     auto p = llama_context_default_params();
@@ -14,7 +13,7 @@ llama_context_params contextParams(uint nCtx = 0, uint nBatch = 512, bool noPerf
     return p;
 }
 
-/// Owns a `llama_context*`, frees it on destruction.
+/// A `llama_context` that frees itself on destruction.
 struct LlamaContext
 {
     private llama_context* _ctx;
@@ -29,13 +28,13 @@ struct LlamaContext
         if (_ctx) { llama_free(_ctx); _ctx = null; }
     }
 
-    /// Creates a context from a loaded model with explicit params.
+    /// Create from explicit params.
     static LlamaContext fromModel(ref LlamaModel model, llama_context_params params) @nogc nothrow
     {
         return LlamaContext(llama_init_from_model(model.ptr, params));
     }
 
-    /// Convenience overload: takes a window size and batch size directly.
+    /// Create from a window size and batch size.
     static LlamaContext fromModel(ref LlamaModel model, uint nCtx, uint nBatch = 512) @nogc nothrow
     {
         return LlamaContext(llama_init_from_model(model.ptr, contextParams(nCtx, nBatch)));
@@ -52,8 +51,7 @@ struct LlamaContext
     /// Encodes a batch (encoder-decoder models); returns 0 on success.
     int encode(llama_batch batch) @nogc nothrow { return llama_encode(_ctx, batch); }
 
-    /// Logits for output at `idx` (-1 = last). Slice is valid until the next decode.
-    /// The returned slice is read-only; the underlying memory is owned by the context.
+    /++ Logits at output position `idx` (-1 = last). Valid until the next decode call. +/
     const(float)[] getLogits(int idx = -1) @trusted @nogc nothrow
     {
         auto model  = llama_get_model(_ctx);

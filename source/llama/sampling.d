@@ -3,7 +3,7 @@ module llama.sampling;
 import llama.llama;
 import llama.ctx : LlamaContext;
 
-/// Builder and owner of a `llama_sampler` chain.
+/// A sampler chain you configure then use to pick the next token.
 struct SamplerChain
 {
     private llama_sampler* _smpl;
@@ -18,7 +18,7 @@ struct SamplerChain
         if (_smpl) { llama_sampler_free(_smpl); _smpl = null; }
     }
 
-    /// New sampler chain with default params.
+    /// Create a new sampler chain.
     static SamplerChain create(bool noPerf = false) @nogc nothrow
     {
         auto p = llama_sampler_chain_default_params();
@@ -68,19 +68,19 @@ struct SamplerChain
         return this;
     }
 
-    /// Samples the next token from a raw context pointer; `batchIdx = -1` uses the last output position.
+    /// Sample the next token. `batchIdx = -1` uses the last output position.
     llama_token sample(llama_context* ctx, int batchIdx = -1) @nogc nothrow
     {
         return llama_sampler_sample(_smpl, ctx, batchIdx);
     }
 
-    /// Samples the next token from a LlamaContext wrapper.
+    /// Sample the next token from a `LlamaContext`.
     llama_token sample(ref LlamaContext ctx, int batchIdx = -1) @nogc nothrow
     {
         return llama_sampler_sample(_smpl, ctx.ptr, batchIdx);
     }
 
-    /// Notifies the sampler of an accepted token (needed for repetition penalties etc.).
+    /// Feed the accepted token back (needed for repetition penalties and similar).
     void accept(llama_token token) @nogc nothrow { llama_sampler_accept(_smpl, token); }
 
     /// Raw C pointer.

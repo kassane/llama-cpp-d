@@ -11,3 +11,4 @@ public import llama.batch;
 public import llama.vocab;
 public import llama.sampling;
 public import llama.llama_cpp;
+public import llama.mtmd;
