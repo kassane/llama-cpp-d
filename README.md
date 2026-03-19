@@ -1,5 +1,10 @@
 # llama-cpp-d
 
+[![CI Build](https://github.com/kassane/llama-cpp-d/actions/workflows/ci.yml/badge.svg)](https://github.com/kassane/llama-cpp-d/actions/workflows/ci.yml)
+![Latest release](https://img.shields.io/github/v/release/kassane/llama-cpp-d?include_prereleases&label=latest)
+[![Static Badge](https://img.shields.io/badge/v2.111.0%20(stable)-f8240e?logo=d&logoColor=f8240e&label=frontend)](https://dlang.org/download.html)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/kassane/llama-cpp-d)
+
 D bindings for [llama.cpp](https://github.com/ggml-org/llama.cpp).
 
 ## Requirements
@@ -62,4 +67,4 @@ void main()
 
 ## License
 
-MIT
+[MIT](./LICENSE)
