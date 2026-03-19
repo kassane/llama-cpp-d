@@ -3,7 +3,7 @@ module llama.backend;
 import llama.ggml_backend : ggml_backend_load_all;
 import llama.llama : llama_backend_init, llama_backend_free;
 
-/// Frees the llama backend on scope exit.
+/// Calls `llama_backend_free` when it goes out of scope.
 struct BackendGuard
 {
     @disable this();
@@ -18,7 +18,7 @@ struct BackendGuard
     }
 }
 
-/// Inits the llama backend; the returned guard calls `llama_backend_free` on exit.
+/// Initialises the llama backend and returns a guard that frees it on scope exit.
 BackendGuard initBackend() @nogc nothrow
 {
     llama_backend_init();

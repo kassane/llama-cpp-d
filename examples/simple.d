@@ -1,5 +1,7 @@
-/// Minimal text-completion example.
-/// Usage: simple -m model.gguf [-n n_predict] [-ngl n_gpu_layers] [prompt]
+/++
+Minimal text-completion example.
+Usage: `simple -m model.gguf [-n n_predict] [-ngl n_gpu_layers] [prompt]`
++/
 module simple;
 
 import llama;

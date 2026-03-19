@@ -2,7 +2,7 @@ module llama.batch;
 
 import llama.llama;
 
-/// Owns a manually-allocated `llama_batch` and frees it on destruction.
+/// A `llama_batch` that frees itself when it goes out of scope.
 struct OwnedBatch
 {
     private llama_batch _batch;
@@ -26,20 +26,19 @@ struct OwnedBatch
     ref llama_batch get() @trusted @nogc nothrow { return _batch; }
 }
 
-/// Allocates a batch that can hold up to `nTokensMax` tokens.
-/// Pass `embd > 0` for embedding input batches instead of token batches.
+/++ Allocates a batch for up to `nTokensMax` tokens. Pass `embd > 0` for embedding batches. +/
 OwnedBatch allocBatch(int nTokensMax, int embd = 0) @nogc nothrow
 {
     return OwnedBatch(llama_batch_init(nTokensMax, embd, 1), true);
 }
 
-/// Non-owning batch view over a D slice; the slice must outlive the batch.
+/// Wraps a token slice into a batch. The slice must outlive the returned batch.
 llama_batch batchGetOne(scope const(llama_token)[] tokens) @trusted @nogc nothrow
 {
     return llama_batch_get_one(cast(llama_token*) tokens.ptr, cast(int) tokens.length);
 }
 
-/// Non-owning batch view over a raw pointer; for C interop.
+/// Wraps a raw token pointer into a batch; for C interop.
 llama_batch batchGetOne(llama_token* tokens, int nTokens) @nogc nothrow
 {
     return llama_batch_get_one(tokens, nTokens);

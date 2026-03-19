@@ -1,6 +1,9 @@
-/// Tokenize text and print each token id + its string piece.
-/// Usage: tokenize -m model.gguf [-s] [text]
-///   -s   include BOS/EOS special tokens; default: off
+/++
+Print each token id and its string piece for the given text.
+
+Usage: `tokenize -m model.gguf [-s] [text]`
+- `-s` include BOS/EOS special tokens (off by default)
++/
 module tokenize_example;
 
 import llama;

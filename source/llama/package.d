@@ -10,4 +10,7 @@ public import llama.ctx;
 public import llama.batch;
 public import llama.vocab;
 public import llama.sampling;
+public import llama.chat;
+public import llama.adapter;
 public import llama.llama_cpp;
+public import llama.mtmd;
