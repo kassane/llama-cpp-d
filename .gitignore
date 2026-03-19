@@ -17,8 +17,11 @@
 # DUB
 .dub
 docs.json
+.di
 __dummy.html
 docs/
+build/
+*-master/
 
 # Code coverage
 *.lst

@@ -1,0 +1,27 @@
+{
+    "name": "llama-cpp-d-examples",
+    "targetType": "none",
+    "dependencies": {
+        "llama-cpp-d": {"path": ".."}
+    },
+    "subPackages": [
+        {
+            "name": "simple",
+            "targetType": "executable",
+            "targetPath": "build",
+            "sourceFiles": ["simple.d"],
+            "dependencies": {
+                "llama-cpp-d": {"path": ".."}
+            }
+        },
+        {
+            "name": "tokenize",
+            "targetType": "executable",
+            "targetPath": "build",
+            "sourceFiles": ["tokenize.d"],
+            "dependencies": {
+                "llama-cpp-d": {"path": ".."}
+            }
+        }
+    ]
+}
