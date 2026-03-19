@@ -5,7 +5,7 @@
 	"authors": [
 		"Matheus Catarino França"
 	],
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"targetPath": "build",
 	"toolchainRequirements": {
 		"frontend": ">=2.111.0"
@@ -55,8 +55,12 @@
 		"-L$PACKAGE_DIR/build/llama.cpp-build/src",
 		"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src"
 	],
+	"libs-windows": [
+		"advapi32"
+	],
 	"lflags-windows": [
-		"/LIBPATH:$PACKAGE_DIR\\build\\llama.cpp-build",
+		"/LIBPATH:$PACKAGE_DIR\\build\\llama.cpp-build\\src\\Release",
+		"/LIBPATH:$PACKAGE_DIR\\build\\llama.cpp-build\\ggml\\src\\Release",
 		"/NODEFAULTLIB:libcmt.lib",
 		"/NODEFAULTLIB:libcmtd.lib",
 		"/NODEFAULTLIB:libvcruntime.lib",
@@ -72,7 +76,21 @@
 		"stdc++"
 	],
 	"libs-osx": [
-		"c++"
+		"c++",
+		"ggml-blas",
+		"ggml-metal"
+	],
+	"lflags-osx": [
+		"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-blas",
+		"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-metal",
+		"-framework",
+		"Accelerate",
+		"-framework",
+		"Metal",
+		"-framework",
+		"Foundation",
+		"-framework",
+		"MetalKit"
 	],
 	"configurations": [
 		{
@@ -215,21 +233,25 @@
 				"ggml",
 				"ggml-base",
 				"ggml-cpu",
-				"ggml-metal"
+				"ggml-metal",
+				"ggml-blas"
 			],
 			"libs-osx": [
-				"c++",
-				"Metal",
-				"Foundation",
-				"MetalKit"
+				"c++"
 			],
 			"lflags-osx": [
 				"-L$PACKAGE_DIR/build/llama.cpp-build/src",
 				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src",
 				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-metal",
-				"-framework Metal",
-				"-framework Foundation",
-				"-framework MetalKit"
+				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-blas",
+				"-framework",
+				"Accelerate",
+				"-framework",
+				"Metal",
+				"-framework",
+				"Foundation",
+				"-framework",
+				"MetalKit"
 			],
 			"preBuildCommands-osx": [
 				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
@@ -306,7 +328,9 @@
 			"sourceFiles": [
 				"tests/test_bindings.d"
 			],
-			"dflags": ["-main"],
+			"dflags": [
+				"-main"
+			],
 			"preBuildCommands-posix": [
 				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
 				"test -d $PACKAGE_DIR/build/llama.cpp-build || cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
