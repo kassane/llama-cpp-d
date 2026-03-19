@@ -366,12 +366,13 @@ struct MtmdContext
         if (_ctx) { mtmd_free(_ctx); _ctx = null; }
     }
 
-    /// Load a projector from a GGUF file.  Returns a falsy context on failure.
+    /// Load a projector from a GGUF file. Returns a falsy context on failure or null model.
     static MtmdContext initFromFile(
         string mmproj,
         const(llama_model)* model,
         mtmd_context_params params) @trusted nothrow
     {
+        if (model is null) return MtmdContext(null);
         import std.string : toStringz;
         return MtmdContext(mtmd_init_from_file(mmproj.toStringz, model, params));
     }
