@@ -227,8 +227,9 @@ int mtmd_helper_decode_image_chunk(
     int                      n_batch,
     llama_pos*               new_n_past);
 
-// ── D RAII wrappers ─────────────────────────────────────────────────────────
-// (not @nogc — these are idiomatic D)
+// ── D wrappers ──────────────────────────────────────────────────────────────
+// Reset to D linkage — the extern(C) block above must not bleed through.
+extern(D):
 
 /++
 RAII owner of a `mtmd_bitmap*`.
@@ -251,14 +252,14 @@ struct MtmdBitmap
     }
 
     /++ Create from a raw RGB pixel buffer (`RGBRGBRGB…`). `data.length` must equal `nx * ny * 3`. +/
-    static MtmdBitmap fromRGB(uint nx, uint ny, const(ubyte)[] data) @trusted @nogc nothrow
+    static MtmdBitmap fromRGB(uint nx, uint ny, scope const(ubyte)[] data) @trusted @nogc nothrow
     in (data.length == cast(size_t) nx * ny * 3)
     {
         return MtmdBitmap(mtmd_bitmap_init(nx, ny, data.ptr));
     }
 
     /// Create from float PCM audio samples (mono, any sample rate).
-    static MtmdBitmap fromAudio(const(float)[] samples) @trusted @nogc nothrow
+    static MtmdBitmap fromAudio(scope const(float)[] samples) @trusted @nogc nothrow
     {
         return MtmdBitmap(mtmd_bitmap_init_from_audio(samples.length, samples.ptr));
     }
