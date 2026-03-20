@@ -149,7 +149,7 @@ jobs:
         if: matrix.config == 'vulkan' && runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libvulkan-dev
+          sudo apt-get install -y glslang libvulkan-dev
 
       - uses: humbletim/setup-vulkan-sdk@main
         if: runner.os == 'Windows'
@@ -157,6 +157,14 @@ jobs:
           vulkan-query-version: 1.4.335.0
           vulkan-components: Vulkan-Headers, Vulkan-Loader
           vulkan-use-cache: true
+      
+      - name: Install Vulkan SDK (Windows)
+        if: matrix.config == 'vulkan' && runner.os == 'Windows'
+        run: |
+          echo ${VULKAN_SDK} >> $GITHUB_ENV
+          echo ${VULKAN_SDK}/Bin >> $GITHUB_PATH
+          echo ${VULKAN_SDK}/Lib >> $GITHUB_PATH
+          echo ${VULKAN_SDK}/Include >> $GITHUB_PATH
 
       # ── Build library ─────────────────────────────────────────────────────────
 
