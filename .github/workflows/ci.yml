@@ -106,7 +106,7 @@ jobs:
           - {os: ubuntu-latest, compiler: ldc-master, config: vulkan}
           # GPU — expected to fail on standard runners (no CUDA/ROCm/oneAPI)
           - {os: ubuntu-latest, compiler: ldc-master, config: cuda,    allow_failure: true}
-          - {os: ubuntu-latest, compiler: ldc-master, config: hipblas, allow_failure: true}
+          - {os: ubuntu-22.04,  compiler: ldc-master, config: hipblas, allow_failure: true}
           - {os: ubuntu-latest, compiler: ldc-master, config: sycl,    allow_failure: true}
 
           # ── macOS ────────────────────────────────────────────────────────────
@@ -182,12 +182,20 @@ jobs:
       - name: Install ROCm / hipBLAS (Linux)
         if: matrix.config == 'hipblas' && runner.os == 'Linux'
         run: |
-          # AMD ROCm 6.x repo (matches upstream container rocm/dev-ubuntu-22.04:6.1.2)
+          # ROCm 6.1.2 — officially supports Ubuntu 22.04 (jammy); runner is pinned to ubuntu-22.04.
+          DISTRO=$(lsb_release -cs)
           wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
-          echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.1.2/ jammy main" \
+          echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.1.2/ $DISTRO main" \
             | sudo tee /etc/apt/sources.list.d/rocm.list
           sudo apt-get update
-          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev hip-dev
+          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev hip-dev hip-base rocm-device-libs
+          # Packages install to /opt/rocm-6.1.2; rocm-core would create the /opt/rocm symlink
+          # but isn't always pulled in. Create it manually so cmake finds the HIP root.
+          ROCM_DIR=$(ls -d /opt/rocm-* 2>/dev/null | sort -V | tail -1)
+          if [ -n "$ROCM_DIR" ] && [ ! -e /opt/rocm ]; then
+            sudo ln -sf "$ROCM_DIR" /opt/rocm
+          fi
+          echo "ROCM_PATH=${ROCM_DIR:-/opt/rocm}" >> $GITHUB_ENV
 
       - name: Install oneAPI SYCL (Linux)
         if: matrix.config == 'sycl' && runner.os == 'Linux'
