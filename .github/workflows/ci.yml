@@ -105,7 +105,7 @@ jobs:
           - {os: ubuntu-latest, compiler: ldc-master, config: openmp}
           - {os: ubuntu-latest, compiler: ldc-master, config: vulkan}
           # GPU — expected to fail on standard runners (no CUDA/ROCm/oneAPI)
-          - {os: ubuntu-latest, compiler: ldc-master, config: cuda,    allow_failure: true}
+          # - {os: ubuntu-latest, compiler: ldc-master, config: cuda,    allow_failure: true}
           # - {os: ubuntu-22.04,  compiler: ldc-master, config: hipblas, allow_failure: true}
           - {os: ubuntu-latest, compiler: ldc-master, config: sycl,    allow_failure: true}
 
