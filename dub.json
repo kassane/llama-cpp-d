@@ -237,7 +237,8 @@
 				"VULKAN_SDK": "${VULKAN_SDK}"
 			},
 			"lflags-windows": [
-				"/LIBPATH:$VULKAN_SDK\\Lib"
+				"/LIBPATH:$VULKAN_SDK\\Lib",
+				"/LIBPATH:$PACKAGE_DIR\\build\\llama.cpp-build\\ggml\\src\\ggml-vulkan\\Release"
 			],
 			"lflags-posix": [
 				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-vulkan"
