@@ -28,9 +28,26 @@ import std.conv         : to;
 import std.file         : mkdirRecurse, exists;
 import std.path         : buildPath, baseName;
 import core.stdc.stdio  : fgets, printf, snprintf;
-import core.sys.posix.stdio : popen, pclose;
 import core.stdc.stdlib : system;
 import core.stdc.string : strlen;
+
+// popen/pclose: POSIX has them in core.sys.posix.stdio; on Windows the MSVC
+// CRT exposes them as _popen/_pclose — alias to a common name.
+version(Posix)
+{
+    import core.sys.posix.stdio : popen, pclose;
+}
+else version(Windows)
+{
+    import core.stdc.stdio : FILE;
+    extern(C) nothrow @nogc
+    {
+        FILE* _popen(scope const char* cmd, scope const char* mode);
+        int   _pclose(FILE* stream);
+    }
+    alias popen  = _popen;
+    alias pclose = _pclose;
+}
 
 // Use POSIX getenv directly — std.process.environment.opApply iterates env
 // vars via an AA, which fails under -preview=safer at the stdlib level.
