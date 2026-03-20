@@ -271,6 +271,31 @@ unittest
     }
 }
 
+@("batchClear: resets n_tokens to zero")
+unittest
+{
+    auto ob = allocBatch(8);
+    batchAdd(ob.get(), 1, 0, 0, true);
+    batchAdd(ob.get(), 2, 1, 0, false);
+    assert(ob.get().n_tokens == 2);
+    batchClear(ob.get());
+    assert(ob.get().n_tokens == 0);
+}
+
+@("batchAdd: populates token, pos, seq_id, logits fields")
+unittest
+{
+    auto ob = allocBatch(4);
+    batchAdd(ob.get(), 42, 7, 3, true);
+    ref llama_batch b = ob.get();
+    assert(b.n_tokens        == 1);
+    assert(b.token[0]        == 42);
+    assert(b.pos[0]          == 7);
+    assert(b.n_seq_id[0]     == 1);
+    assert(b.seq_id[0][0]    == 3);
+    assert(b.logits[0]       == true);
+}
+
 // ---------------------------------------------------------------------------
 // Backend
 // ---------------------------------------------------------------------------
@@ -317,6 +342,7 @@ unittest
 {
     static assert(__traits(hasMember, LlamaContext, "poolingType"));
     static assert(__traits(hasMember, LlamaContext, "memory"));
+    static assert(__traits(hasMember, LlamaContext, "memoryClear"));
     static assert(__traits(hasMember, LlamaContext, "getEmbeddings"));
     static assert(__traits(hasMember, LlamaContext, "getEmbeddingsIth"));
     static assert(__traits(hasMember, LlamaContext, "getEmbeddingsSeq"));
@@ -325,6 +351,27 @@ unittest
     static assert(__traits(hasMember, LlamaContext, "stateSetData"));
     static assert(__traits(hasMember, LlamaContext, "stateSaveFile"));
     static assert(__traits(hasMember, LlamaContext, "stateLoadFile"));
+    static assert(__traits(hasMember, LlamaContext, "stateSeqGetSize"));
+    static assert(__traits(hasMember, LlamaContext, "stateSeqGetData"));
+    static assert(__traits(hasMember, LlamaContext, "stateSeqSetData"));
+}
+
+// ---------------------------------------------------------------------------
+// Owned mixin — structural checks
+// ---------------------------------------------------------------------------
+
+@("Owned mixin: injected members present on wrapper structs")
+unittest
+{
+    import llama.owned;
+    // ptr() property
+    static assert(__traits(hasMember, LlamaModel,   "ptr"));
+    static assert(__traits(hasMember, LlamaContext,  "ptr"));
+    static assert(__traits(hasMember, SamplerChain,  "ptr"));
+    // bool conversion via opCast
+    static assert(__traits(compiles, { auto m = LlamaModel.loadFromFile("/x"); bool b = cast(bool) m; }));
+    // not copyable
+    static assert(!__traits(compiles, { auto m = LlamaModel.loadFromFile("/x"); auto m2 = m; }));
 }
 
 // ---------------------------------------------------------------------------
@@ -497,7 +544,7 @@ unittest
 }
 
 // ---------------------------------------------------------------------------
-// MtmdBitmap RAII wrapper
+// MtmdBitmap wrapper
 // ---------------------------------------------------------------------------
 
 @("MtmdBitmap: fromRGB creates bitmap with correct dimensions and data length")
@@ -523,7 +570,7 @@ unittest
 }
 
 // ---------------------------------------------------------------------------
-// InputChunks RAII + range
+// InputChunks wrapper + range
 // ---------------------------------------------------------------------------
 
 @("InputChunks: empty list — length, empty, nTokens, nPos, iteration")
@@ -541,7 +588,7 @@ unittest
 }
 
 // ---------------------------------------------------------------------------
-// MtmdContext RAII wrapper
+// MtmdContext wrapper
 // ---------------------------------------------------------------------------
 
 @("MtmdContext: initFromFile with nonexistent path returns falsy")

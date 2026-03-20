@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+env:
+  MODEL_REPO: unsloth/Qwen3.5-0.8B-GGUF
+  MODEL_FILE: Qwen3.5-0.8B-Q4_K_M.gguf
+
 jobs:
   build:
     strategy:
@@ -33,19 +37,58 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@main
+
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: latest
           ninjaVersion: latest
+
       - uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{matrix.compiler}}
+
       - name: Testing
         run: dub test
+
+      - name: Build hf-download
+        working-directory: tools
+        run: dub build --build=release
+
       - name: Build examples
         working-directory: examples
         run: |
           dub build :simple
           dub build :tokenize
+          dub build :embedding
+          dub build :save-load-state
           dub build :multimodal
 
+      # ── Model download + example runs (Posix only) ──────────────────────────
+      # Windows is excluded: example runs require a GGUF model, and CPU-only
+      # inference on Windows CI runners is prohibitively slow.
+
+      - name: Cache model
+        id: cache-model
+        uses: actions/cache@v4
+        if: runner.os != 'Windows'
+        with:
+          path: ${{env.MODEL_FILE}}
+          key: model-${{env.MODEL_REPO}}-${{env.MODEL_FILE}}
+
+      - name: Download model
+        if: runner.os != 'Windows' && steps.cache-model.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{secrets.HF_TOKEN}}
+          REPO: ${{env.MODEL_REPO}}
+          FILE: ${{env.MODEL_FILE}}
+        run: ./build/hf-download -r "$REPO" -f "$FILE"
+
+      - name: Run examples
+        if: runner.os != 'Windows'
+        env:
+          MODEL: ${{env.MODEL_FILE}}
+        run: |
+          ./examples/build/simple          -m "$MODEL" -n 32 "Hello, D!"
+          ./examples/build/tokenize        -m "$MODEL" "Hello, world!"
+          ./examples/build/embedding       -m "$MODEL"
+          ./examples/build/save-load-state -m "$MODEL" -n 8

@@ -109,7 +109,6 @@
 		},
 		{
 			"name": "mtmd",
-			"description": "CPU multimodal (llama + libmtmd projector). Use with vision/audio models.",
 			"libs": [
 				"mtmd",
 				"llama",

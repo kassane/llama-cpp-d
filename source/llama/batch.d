@@ -43,3 +43,34 @@ llama_batch batchGetOne(llama_token* tokens, int nTokens) @nogc nothrow
 {
     return llama_batch_get_one(tokens, nTokens);
 }
+
+/// Reset a batch's token count to zero (keeps allocated memory).
+void batchClear(ref llama_batch batch) @nogc nothrow
+{
+    batch.n_tokens = 0;
+}
+
+/++
+Append one token to a pre-allocated batch (created via `allocBatch`).
+
+Params:
+    batch   = target batch; must have been allocated with `allocBatch`
+    id      = token id
+    pos     = position in the sequence
+    seqId   = sequence this token belongs to
+    logits  = request logit output for this position
++/
+void batchAdd(ref llama_batch batch,
+              llama_token     id,
+              llama_pos       pos,
+              llama_seq_id    seqId,
+              bool            logits) @trusted @nogc nothrow
+{
+    int n = batch.n_tokens;
+    batch.token   [n]    = id;
+    batch.pos     [n]    = pos;
+    batch.n_seq_id[n]    = 1;
+    batch.seq_id  [n][0] = seqId;
+    batch.logits  [n]    = logits;
+    batch.n_tokens       = n + 1;
+}

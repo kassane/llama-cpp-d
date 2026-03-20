@@ -1,0 +1,32 @@
+{
+	"name": "hf-download",
+	"description": "Download GGUF model files from HuggingFace Hub",
+	"license": "MIT",
+	"authors": [
+		"Matheus Catarino França"
+	],
+	"targetType": "executable",
+	"targetPath": "../build",
+	"targetName": "hf-download",
+	"mainSourceFile": "hf_download.d",
+	"toolchainRequirements": {
+		"frontend": ">=2.111.0"
+	},
+	"dflags": [
+		"-preview=all"
+	],
+	"buildTypes": {
+		"debug": {
+			"buildOptions": [
+				"debugMode",
+				"debugInfo"
+			]
+		},
+		"release": {
+			"buildOptions": [
+				"inline",
+				"optimize"
+			]
+		}
+	}
+}
