@@ -1,24 +1,14 @@
 /++
-Download GGUF model files from HuggingFace Hub.
+Download GGUF files from HuggingFace Hub.
 
-Without `-f`, lists all `.gguf` files in the repository.
-With `-f`, downloads the specified file via curl with a progress bar.
-
-Authentication via `-t TOKEN` or the `HF_TOKEN` environment variable
-(required for private repositories and to raise rate limits).
+Without -f, lists .gguf files with sizes.  With -f, downloads via curl.
+Auth: -t token or HF_TOKEN env var (private repos / higher rate limits).
 
 Usage:
-  hf-download -r owner/repo [-f filename] [-o outdir] [-t token]
-  HF_TOKEN=<token> hf-download -r owner/repo
+  hf-download -r owner/repo [-f file] [-o outdir] [-t token]
 
-Requires curl to be installed and available in PATH.
-
-Compatibility note (-preview=all):
-  std.json is excluded because JSONValue.toString() contains
-  `foreach (k, v; objectAA)` which the -preview=safer checker rejects in
-  core.internal.newaa.opApply. std.process.environment is excluded for the
-  same reason (opApply over env vars). Both are replaced with minimal
-  alternatives using only core.* and std.string.
+Requires curl in PATH. Uses popen/system instead of std.net.curl,
+which breaks under -preview=all.
 +/
 module hf_download;
 
@@ -31,8 +21,7 @@ import core.stdc.stdio  : fgets, printf, snprintf;
 import core.stdc.stdlib : system;
 import core.stdc.string : strlen;
 
-// popen/pclose: POSIX has them in core.sys.posix.stdio; on Windows the MSVC
-// CRT exposes them as _popen/_pclose — alias to a common name.
+// Windows spells these _popen/_pclose.
 version(Posix)
 {
     import core.sys.posix.stdio : popen, pclose;
@@ -49,8 +38,7 @@ else version(Windows)
     alias pclose = _pclose;
 }
 
-// Use POSIX getenv directly — std.process.environment.opApply iterates env
-// vars via an AA, which fails under -preview=safer at the stdlib level.
+// std.process.environment breaks under -preview=all.
 version(Posix)
     import core.sys.posix.stdlib : c_getenv = getenv;
 else version(Windows)
@@ -59,12 +47,18 @@ else version(Windows)
 enum HF_API  = "https://huggingface.co/api";
 enum HF_BASE = "https://huggingface.co";
 
+struct GgufFile
+{
+    string name;
+    ulong  size; // bytes; 0 if unavailable
+}
+
 int main(string[] args)
 {
     string repo;
     string filename;
-    string outDir = ".";
-    string token  = envGet("HF_TOKEN");
+    string outDir  = ".";
+    string token   = envGet("HF_TOKEN");
     bool   listAll = false;
 
     for (int i = 1; i < cast(int) args.length; i++)
@@ -110,35 +104,34 @@ int main(string[] args)
         return downloadFile(repo, filename, outDir, token);
 }
 
-// ── List .gguf files in a repository ─────────────────────────────────────────
+// ── List ──────────────────────────────────────────────────────────────────────
 
 int listGgufFiles(string repo, string token)
 {
-    immutable url = HF_API ~ "/models/" ~ repo;
+    // ?blobs=true includes LFS size for each sibling.
+    immutable url = HF_API ~ "/models/" ~ repo ~ "?blobs=true";
 
     string body_;
     try
         body_ = httpGet(url, token);
     catch (Exception e)
     {
-        stderr.writefln("error: request failed: %s", e.msg);
+        stderr.writefln("error: %s", e.msg);
         return 1;
     }
 
-    // Check for API-level error field before extracting names.
     if (hasJsonKey(body_, "error"))
     {
-        stderr.writefln("error from HuggingFace API: %s",
-                        extractJsonString(body_, "error"));
+        stderr.writefln("API error: %s", extractJsonString(body_, "error"));
         return 1;
     }
     if (!hasJsonKey(body_, "siblings"))
     {
-        stderr.writeln("error: unexpected API response — no 'siblings' field");
+        stderr.writeln("error: unexpected API response");
         return 1;
     }
 
-    auto files = extractGgufNames(body_);
+    auto files = extractGgufFiles(body_);
     insertionSort(files);
 
     if (files.length == 0)
@@ -147,16 +140,19 @@ int listGgufFiles(string repo, string token)
         return 0;
     }
 
+    int maxLen = 0;
+    foreach (ref f; files)
+        if (cast(int) f.name.length > maxLen)
+            maxLen = cast(int) f.name.length;
+
     writefln("GGUF files in %s  (%d found)", repo, files.length);
-    writeln("─────────────────────────────────────────────");
-    foreach (f; files)
-        writefln("  %s", f);
+    printFileList(files, maxLen);
     writeln();
     writefln("Download: hf-download -r %s -f <filename>", repo);
     return 0;
 }
 
-// ── Download a single file ────────────────────────────────────────────────────
+// ── Download ──────────────────────────────────────────────────────────────────
 
 int downloadFile(string repo, string filename, string outDir, string token)
 {
@@ -171,13 +167,12 @@ int downloadFile(string repo, string filename, string outDir, string token)
     writefln("  to   : %s", outPath);
     writeln();
 
-    // curl --progress-bar writes to stderr directly — live progress in terminal.
+    // --progress-bar writes to stderr so it shows live in the terminal.
     string cmd = "curl -L --progress-bar";
     if (token.length)
         cmd ~= " -H \"Authorization: Bearer " ~ token ~ "\"";
     cmd ~= " -o \"" ~ outPath ~ "\" \"" ~ url ~ "\"";
 
-    // system() inherits stdout/stderr so curl's progress bar is visible.
     int rc = systemCmd(cmd);
     if (rc != 0)
     {
@@ -189,11 +184,9 @@ int downloadFile(string repo, string filename, string outDir, string token)
     return 0;
 }
 
-// ── HTTP GET via curl CLI ─────────────────────────────────────────────────────
-// Uses popen+curl instead of std.net.curl.HTTP.
-// std.net.curl.HTTP iterates its internal header AA with foreach(k,v;aa),
-// which the -preview=safer checker rejects in core.internal.newaa.opApply.
+// ── HTTP ──────────────────────────────────────────────────────────────────────
 
+// popen+curl GET; std.net.curl breaks under -preview=all.
 string httpGet(string url, string token) @trusted
 {
     string cmd = "curl -sf -L";
@@ -205,8 +198,6 @@ string httpGet(string url, string token) @trusted
     if (pipe is null)
         throw new Exception("popen failed");
 
-    // Plain ~= instead of appender!string — appender instantiates
-    // std.typecons.RefCounted which triggers typecons.d(1279) under -preview=all.
     string result;
     char[4096] tmp = void;
     while (fgets(tmp.ptr, cast(int) tmp.sizeof, pipe) !is null)
@@ -224,17 +215,14 @@ int systemCmd(string cmd) @trusted nothrow
     return system(cmd.toStringz);
 }
 
-// ── Minimal JSON helpers — no std.json ───────────────────────────────────────
-// std.json.JSONValue.toString() contains `foreach (k, v; objectAA)` which
-// fails under -preview=safer even when never called. Use string scanning only.
+// ── JSON helpers ──────────────────────────────────────────────────────────────
+// No std.json — breaks under -preview=all.
 
-/// True if the JSON text contains `"key"` at the top level.
 bool hasJsonKey(string json, string key) pure nothrow @safe
 {
     return json.indexOf("\"" ~ key ~ "\"") >= 0;
 }
 
-/// Extract the string value of the first occurrence of `"key": "value"`.
 string extractJsonString(string json, string key) pure @safe
 {
     auto needle = "\"" ~ key ~ "\"";
@@ -249,16 +237,67 @@ string extractJsonString(string json, string key) pure @safe
     return json[pos .. end];
 }
 
-// Simple insertion sort — avoids std.algorithm.sort which fails under
-// -preview=safer: binaryFun calls lessFun(r.front, r.front), which the
-// aliasing checker rejects as two mutable references to the same value.
-void insertionSort(string[] arr) @safe nothrow
+// Parses name + byte size from each sibling in a ?blobs=true API response.
+GgufFile[] extractGgufFiles(string json) pure @safe
+{
+    GgufFile[] files;
+    enum rfnKey = "\"rfilename\"";
+    enum szKey  = "\"size\"";
+    ptrdiff_t pos = 0;
+    while (true)
+    {
+        auto kpos = json.indexOf(rfnKey, pos);
+        if (kpos < 0) break;
+        pos = kpos + rfnKey.length;
+
+        while (pos < json.length &&
+               (json[pos] == ' ' || json[pos] == ':' || json[pos] == '\t'))
+            pos++;
+        if (pos >= json.length || json[pos] != '"') continue;
+        pos++;
+        auto end = json.indexOf('"', pos);
+        if (end < 0) break;
+        auto name = json[pos .. end];
+        pos = end + 1;
+
+        if (!name.endsWith(".gguf")) continue;
+
+        // Search for "size" only within this sibling's object, not the next.
+        auto nextRfn  = json.indexOf(rfnKey, pos);
+        auto searchTo = nextRfn < 0 ? cast(ptrdiff_t) json.length : nextRfn;
+
+        ulong sz  = 0;
+        auto  szp = json.indexOf(szKey, pos);
+        if (szp >= 0 && szp < searchTo)
+        {
+            auto p = szp + szKey.length;
+            while (p < json.length &&
+                   (json[p] == ' ' || json[p] == ':' || json[p] == '\t'))
+                p++;
+            ulong n = 0;
+            bool  ok = false;
+            while (p < json.length && json[p] >= '0' && json[p] <= '9')
+            {
+                n  = n * 10 + (json[p] - '0');
+                p++;
+                ok = true;
+            }
+            if (ok) sz = n;
+        }
+
+        files ~= GgufFile(name, sz);
+    }
+    return files;
+}
+
+// std.algorithm.sort breaks under -preview=all.
+void insertionSort(GgufFile[] arr) @safe nothrow
 {
     for (size_t i = 1; i < arr.length; i++)
     {
-        string key = arr[i];
-        ptrdiff_t j = cast(ptrdiff_t) i - 1;
-        while (j >= 0 && arr[j] > key)
+        GgufFile key = arr[i];
+        ptrdiff_t j  = cast(ptrdiff_t) i - 1;
+        while (j >= 0 && arr[j].name > key.name)
         {
             arr[j + 1] = arr[j];
             j--;
@@ -267,34 +306,27 @@ void insertionSort(string[] arr) @safe nothrow
     }
 }
 
-/// Scan the HF API response for all `"rfilename": "*.gguf"` entries.
-string[] extractGgufNames(string json) pure @safe
+void printFileList(GgufFile[] files, int maxLen) @trusted nothrow
 {
-    string[] names;
-    enum needle = "\"rfilename\"";
-    ptrdiff_t pos = 0;
-    while (true)
+    enum sep = "─";
+    for (int i = 0; i < maxLen + 12; i++) printf("%s", sep.ptr);
+    printf("\n");
+
+    ulong total = 0;
+    foreach (ref f; files)
     {
-        auto kpos = json.indexOf(needle, pos);
-        if (kpos < 0) break;
-        pos = kpos + needle.length;
-        // skip whitespace and ':'
-        while (pos < json.length &&
-               (json[pos] == ' ' || json[pos] == ':' || json[pos] == '\t'))
-            pos++;
-        if (pos >= json.length || json[pos] != '"') continue;
-        pos++; // skip opening quote
-        auto end = json.indexOf('"', pos);
-        if (end < 0) break;
-        auto name = json[pos .. end];
-        if (name.endsWith(".gguf"))
-            names ~= name;
-        pos = end + 1;
+        total += f.size;
+        if (f.size > 0)
+            printf("  %-*s  %s\n", maxLen, f.name.toStringz, fmtBytes(f.size));
+        else
+            printf("  %s\n", f.name.toStringz);
     }
-    return names;
+
+    if (total > 0)
+        printf("  %*s  %s\n", maxLen, "Total".ptr, fmtBytes(total));
 }
 
-// ── Environment variable helper ───────────────────────────────────────────────
+// ── Env ───────────────────────────────────────────────────────────────────────
 
 string envGet(string name) @trusted nothrow
 {
@@ -306,11 +338,10 @@ string envGet(string name) @trusted nothrow
     return cast(string) p[0 .. strlen(p)];
 }
 
-// ── Byte formatting ───────────────────────────────────────────────────────────
-// Uses printf/snprintf throughout — writefln with float format specifiers
-// fails under -preview=all due to std.format.internal.floats aliasing issues.
+// ── Formatting ────────────────────────────────────────────────────────────────
+// printf only; writefln+float breaks under -preview=all.
 
-// Two alternating static buffers: char[32][2] in D means 2 × char[32].
+// Two alternating buffers so a single printf can call fmtBytes() twice.
 const(char)* fmtBytes(ulong n) @trusted nothrow
 {
     static char[32][2] bufs;
@@ -344,7 +375,7 @@ string humanBytes(ulong n) @trusted nothrow
 
 int printUsage(string prog) @trusted nothrow
 {
-    // Use toStringz — prog.ptr is not null-terminated; printf would read past it.
+    // prog.ptr is not null-terminated; toStringz makes a safe C string.
     auto p = prog.toStringz;
     printf(
         "\nusage: %s -r owner/repo [-f file] [-o outdir] [-t token]\n\n"
