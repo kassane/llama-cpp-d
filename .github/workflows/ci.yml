@@ -175,6 +175,9 @@ jobs:
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update -qq
           sudo apt-get install -y cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcublas-dev-12-6
+          # cuda-nvcc-12-6 installs nvcc to /usr/local/cuda-12.6/bin — add to PATH and set CUDACXX.
+          echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+          echo "CUDACXX=/usr/local/cuda/bin/nvcc" >> $GITHUB_ENV
 
       - name: Install ROCm / hipBLAS (Linux)
         if: matrix.config == 'hipblas' && runner.os == 'Linux'
