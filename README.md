@@ -129,7 +129,6 @@ void main()
 
 ```d
 import llama;
-import llama.mtmd;
 
 void main() @trusted
 {

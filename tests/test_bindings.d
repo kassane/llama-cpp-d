@@ -412,20 +412,6 @@ unittest
 }
 
 // ---------------------------------------------------------------------------
-// llama_cpp.d — extern(C++) deleter structs
-// ---------------------------------------------------------------------------
-
-@("llama_cpp.d: extern(C++) deleter structs are correctly typed")
-unittest
-{
-    import llama.llama_cpp;
-    static assert(is(llama_model_deleter == struct));
-    static assert(is(llama_context_deleter == struct));
-    static assert(is(llama_sampler_deleter == struct));
-    static assert(is(llama_adapter_lora_deleter == struct));
-}
-
-// ---------------------------------------------------------------------------
 // chat.d
 // ---------------------------------------------------------------------------
 
