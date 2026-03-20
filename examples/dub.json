@@ -1,5 +1,5 @@
 {
-    "name": "",
+    "name": "cli",
     "targetType": "none",
     "dependencies": {
         "llama-cpp-d": {

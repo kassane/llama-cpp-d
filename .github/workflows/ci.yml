@@ -79,10 +79,10 @@ jobs:
         env:
           MODEL: ${{env.MODEL_FILE}}
         run: |
-          ./examples/build/_simple          -m "$MODEL" -n 32 "Hello, D!"
-          ./examples/build/_tokenize        -m "$MODEL" "Hello, world!"
-          ./examples/build/_embedding       -m "$MODEL"
-          ./examples/build/_save-load-state -m "$MODEL" -n 8
+          ./examples/build/cli_simple          -m "$MODEL" -n 32 "Hello, D!"
+          ./examples/build/cli_tokenize        -m "$MODEL" "Hello, world!"
+          ./examples/build/cli_embedding       -m "$MODEL"
+          ./examples/build/cli_save-load-state -m "$MODEL" -n 8
 
   # ── Backend config matrix ────────────────────────────────────────────────────
   # Builds the llama-cpp-d library (and a representative example where the
