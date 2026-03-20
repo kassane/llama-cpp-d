@@ -1,6 +1,8 @@
 # Compiled Object files
 *.o
 *.obj
+*.bin
+*.gguf
 
 # Compiled Dynamic libraries
 *.so

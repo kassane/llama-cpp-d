@@ -6,46 +6,235 @@ on:
       - main
   pull_request:
 
+env:
+  MODEL_REPO: unsloth/Qwen3.5-0.8B-GGUF
+  MODEL_FILE: Qwen3.5-0.8B-Q4_K_M.gguf
+
 jobs:
+  # ── Compiler × OS matrix ────────────────────────────────────────────────────
+  # Builds default config on all supported compilers, runs the unittest suite,
+  # and exercises all examples against a real GGUF model on Posix.
   build:
+    name: Build (${{matrix.compiler}}, ${{matrix.os}})
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            arch: amd64
-            compiler: dmd-latest
-          - os: ubuntu-latest
-            arch: amd64
-            compiler: ldc-master
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            compiler: ldc-master
-          - os: macos-latest
-            arch: arm64
-            compiler: ldc-master
-          - os: windows-latest
-            arch: amd64
-            compiler: dmd-latest
-          - os: windows-latest
-            arch: amd64
-            compiler: ldc-master
-      fail-fast: false
+          - {os: ubuntu-latest,    arch: amd64, compiler: dmd-latest}
+          - {os: ubuntu-latest,    arch: amd64, compiler: ldc-master}
+          - {os: ubuntu-24.04-arm, arch: arm64, compiler: ldc-master}
+          - {os: macos-latest,     arch: arm64, compiler: ldc-master}
+          - {os: windows-latest,   arch: amd64, compiler: dmd-latest}
+          - {os: windows-latest,   arch: amd64, compiler: ldc-master}
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@main
+
       - uses: lukka/get-cmake@latest
         with:
           cmakeVersion: latest
           ninjaVersion: latest
+
       - uses: dlang-community/setup-dlang@v2
         with:
           compiler: ${{matrix.compiler}}
+
       - name: Testing
         run: dub test
+
+      - name: Build hf-download
+        working-directory: tools
+        run: dub build --build=release
+
       - name: Build examples
         working-directory: examples
         run: |
           dub build :simple
           dub build :tokenize
+          dub build :embedding
+          dub build :save-load-state
           dub build :multimodal
 
+      # ── Model download + example runs (Posix only) ──────────────────────────
+      # Skipped on Windows: CPU-only inference on Windows CI runners is slow.
+
+      - name: Cache model
+        id: cache-model
+        uses: actions/cache@v4
+        if: runner.os != 'Windows'
+        with:
+          path: ${{env.MODEL_FILE}}
+          key: model-${{env.MODEL_REPO}}-${{env.MODEL_FILE}}
+
+      - name: Download model
+        if: runner.os != 'Windows' && steps.cache-model.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{secrets.HF_TOKEN}}
+          REPO: ${{env.MODEL_REPO}}
+          FILE: ${{env.MODEL_FILE}}
+        run: ./build/hf-download -r "$REPO" -f "$FILE"
+
+      - name: Run examples
+        if: runner.os != 'Windows'
+        env:
+          MODEL: ${{env.MODEL_FILE}}
+        run: |
+          ./examples/build/cli_simple          -m "$MODEL" -n 32 "Hello, D!"
+          ./examples/build/cli_tokenize        -m "$MODEL" "Hello, world!"
+          ./examples/build/cli_embedding       -m "$MODEL"
+          ./examples/build/cli_save-load-state -m "$MODEL" -n 8
+
+  # ── Backend config matrix ────────────────────────────────────────────────────
+  # Builds the llama-cpp-d library (and a representative example where the
+  # config is also defined in examples/dub.json) in every dub configuration.
+  #
+  # GPU configs (cuda, hipblas, sycl) are marked allow_failure: true —
+  # they require hardware / large SDKs not available on standard CI runners.
+  # They are included so the matrix documents all supported configs and any
+  # accidental breakage in the dub.json / cmake wiring is caught early.
+  configs:
+    name: Config ${{matrix.config}} (${{matrix.os}})
+    continue-on-error: ${{matrix.allow_failure == true}}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux ────────────────────────────────────────────────────────────
+          - {os: ubuntu-latest, compiler: ldc-master, config: mtmd}
+          - {os: ubuntu-latest, compiler: ldc-master, config: openblas}
+          - {os: ubuntu-latest, compiler: ldc-master, config: openmp}
+          - {os: ubuntu-latest, compiler: ldc-master, config: vulkan}
+          # GPU — expected to fail on standard runners (no CUDA/ROCm/oneAPI)
+          # - {os: ubuntu-latest, compiler: ldc-master, config: cuda,    allow_failure: true}
+          # - {os: ubuntu-22.04,  compiler: ldc-master, config: hipblas, allow_failure: true}
+          - {os: ubuntu-latest, compiler: ldc-master, config: sycl,    allow_failure: true}
+
+          # ── macOS ────────────────────────────────────────────────────────────
+          - {os: macos-latest, compiler: ldc-master, config: metal}
+          - {os: macos-latest, compiler: ldc-master, config: openblas}
+          - {os: macos-latest, compiler: ldc-master, config: openmp}
+
+          # ── Windows ──────────────────────────────────────────────────────────
+          - {os: windows-latest, compiler: ldc-master, config: openmp}
+          - {os: windows-latest, compiler: ldc-master, config: vulkan}
+
+    runs-on: ${{matrix.os}}
+    steps:
+      - uses: actions/checkout@main
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: latest
+          ninjaVersion: latest
+
+      - uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{matrix.compiler}}
+
+      # ── SDK / dependency installs (conditional per config × OS) ──────────────
+
+      - name: Install OpenBLAS (Linux)
+        if: matrix.config == 'openblas' && runner.os == 'Linux'
+        run: sudo apt-get install -y libopenblas-dev
+
+      - name: Install OpenBLAS (macOS)
+        if: matrix.config == 'openblas' && runner.os == 'macOS'
+        run: |
+          brew install openblas
+          # Export path so dub's preBuildCommands-osx can reference it as $OPENBLAS_PREFIX.
+          # $(brew --prefix) inside dub.json strings is parsed as a dub variable and fails.
+          echo "OPENBLAS_PREFIX=$(brew --prefix openblas)" >> $GITHUB_ENV
+
+      - name: Install libomp (macOS)
+        if: matrix.config == 'openmp' && runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Install Vulkan SDK (Linux)
+        if: matrix.config == 'vulkan' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc libvulkan-dev libssl-dev
+
+      # Full LunarG SDK installer — includes glslc which cmake's FindVulkan requires.
+      - name: Install Vulkan SDK (Windows)
+        if: matrix.config == 'vulkan' && runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VULKAN_VERSION: 1.4.313.2
+        run: |
+          curl.exe -o "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" -L `
+            "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          & "$env:RUNNER_TEMP\VulkanSDK-Installer.exe" --accept-licenses --default-answer --confirm-command install
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\$env:VULKAN_VERSION"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\$env:VULKAN_VERSION\Bin"
+
+      - name: Install CUDA toolkit (Linux)
+        if: matrix.config == 'cuda' && runner.os == 'Linux'
+        run: |
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcublas-dev-12-6
+          # cuda-nvcc-12-6 installs nvcc to /usr/local/cuda-12.6/bin — add to PATH and set CUDACXX.
+          echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+          echo "CUDACXX=/usr/local/cuda/bin/nvcc" >> $GITHUB_ENV
+
+      - name: Install ROCm / hipBLAS (Linux)
+        if: matrix.config == 'hipblas' && runner.os == 'Linux'
+        run: |
+          # ROCm 6.1.2 — officially supports Ubuntu 22.04 (jammy); runner is pinned to ubuntu-22.04.
+          DISTRO=$(lsb_release -cs)
+          wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
+          echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.1.2/ $DISTRO main" \
+            | sudo tee /etc/apt/sources.list.d/rocm.list
+          sudo apt-get update
+          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev hip-dev hip-base rocm-device-libs rocm-core
+          # rocm-core creates the /opt/rocm symlink via /etc/profile.d/rocm.sh; create it
+          # manually here so it is available immediately without a shell restart.
+          ROCM_DIR=$(ls -d /opt/rocm-* 2>/dev/null | sort -V | tail -1)
+          if [ -n "$ROCM_DIR" ] && [ ! -e /opt/rocm ]; then
+            sudo ln -sf "$ROCM_DIR" /opt/rocm
+          fi
+          echo "/opt/rocm/bin" >> $GITHUB_PATH
+          echo "ROCM_PATH=/opt/rocm" >> $GITHUB_ENV
+          echo "HIP_PATH=/opt/rocm" >> $GITHUB_ENV
+
+      - name: Install oneAPI SYCL (Linux)
+        if: matrix.config == 'sycl' && runner.os == 'Linux'
+        run: |
+          # Intel oneAPI repo (matches upstream ubuntu-22-sycl job)
+          wget -qO - https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | sudo apt-key add -
+          sudo add-apt-repository "deb https://apt.repos.intel.com/oneapi all main"
+          sudo apt-get update
+          sudo apt-get install -y intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mkl-devel
+
+      # ── Build library ─────────────────────────────────────────────────────────
+
+      # SYCL needs the oneAPI environment before cmake sees icx/icpx in PATH.
+      - name: Build library (sycl)
+        if: matrix.config == 'sycl'
+        shell: bash
+        run: |
+          source /opt/intel/oneapi/setvars.sh
+          dub build --config=sycl
+
+      - name: Build library
+        if: matrix.config != 'sycl'
+        run: dub build --config=${{matrix.config}}
+
+      # ── Build example (only for configs also defined in examples/dub.json) ───
+      # This exercises the subConfigurations propagation from examples → library.
+      # openblas/openmp/mtmd are not listed in examples/dub.json, so skipped.
+
+      - name: Build example (simple)
+        if: >
+          matrix.config == 'vulkan' ||
+          matrix.config == 'metal'
+        working-directory: examples
+        run: dub build :simple --config=${{matrix.config}}
+
+      - name: Build example (multimodal)
+        if: matrix.config == 'mtmd'
+        working-directory: examples
+        run: dub build :multimodal

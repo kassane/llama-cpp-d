@@ -21,6 +21,32 @@ D bindings for [llama.cpp](https://github.com/ggml-org/llama.cpp).
 dub add llama-cpp-d
 ```
 
+## Tools
+
+### hf-download
+
+List and download GGUF files from HuggingFace Hub:
+
+```sh
+cd tools && dub build --build=release
+
+# List available .gguf files in a repository
+./build/hf-download -r unsloth/Qwen3.5-0.8B-GGUF
+
+# Download a specific file
+./build/hf-download -r unsloth/Qwen3.5-0.8B-GGUF -f Qwen3.5-0.8B-Q4_K_M.gguf -o ~/models
+
+# With authentication (private repos / higher rate limits)
+HF_TOKEN=hf_xxx ./build/hf-download -r myorg/mymodel -f model.gguf
+```
+
+| Flag | Description |
+|------|-------------|
+| `-r owner/repo` | HuggingFace repository (required) |
+| `-f filename` | File to download; omit to list `.gguf` files |
+| `-o outdir` | Output directory (default: `.`) |
+| `-t token` | HF access token (or `HF_TOKEN` env var) |
+
 ## Examples
 
 ```sh
@@ -29,6 +55,13 @@ dub run :simple -- -m model.gguf -n 64 "Tell me a joke"
 
 # Tokenization inspector
 dub run :tokenize -- -m model.gguf -s "Hello, world!"
+
+# Sentence embeddings (cosine similarity between prompts)
+dub run :embedding -- -m model.gguf
+dub run :embedding -- -m model.gguf -p "custom sentence"
+
+# Context state save/load (verifies two runs produce identical output)
+dub run :save-load-state -- -m model.gguf -n 32
 
 # Multimodal (vision/audio) — text only
 dub run :multimodal -c default -- -m model.gguf --mmproj mmproj.gguf -n 200 "Describe this."
@@ -41,6 +74,8 @@ dub run :multimodal -c default -- -m model.gguf --mmproj mmproj.gguf -i photo.jp
 |---------|----------------|----------------|
 | `simple` | `-m <path>` | `-n <tokens>` (default 32), `-ngl <gpu-layers>` (default 99) |
 | `tokenize` | `-m <path>` | `-s` include BOS/EOS |
+| `embedding` | `-m <path>` | `-p <text>`, `-ngl` (default 99) |
+| `save-load-state` | `-m <path>` | `-n <tokens>` (default 16), `-ngl`, `--state-file <path>` |
 | `multimodal` | `-m <path>`, `--mmproj <path>` | `-i <image>`, `-n <tokens>` (default 512), `-ngl` (default 99), `--no-gpu` |
 
 ### Configurations
@@ -94,7 +129,6 @@ void main()
 
 ```d
 import llama;
-import llama.mtmd;
 
 void main() @trusted
 {

@@ -1,5 +1,5 @@
 /++
-D bindings and RAII wrappers for libmtmd (multimodal support).
+D bindings and wrappers for libmtmd (multimodal support).
 
 libmtmd encodes images and audio into token embeddings that a language
 model can attend to alongside ordinary text tokens.
@@ -9,7 +9,7 @@ Typical usage:
 auto mtmd = MtmdContext.initFromFile("mmproj.gguf", model.ptr);
 auto bmp  = mtmd.loadBitmap("photo.jpg");
 auto chunks = InputChunks.create();
-auto txt  = mtmd_input_text("<__media__>\nDescribe this image.".ptr, true, true);
+auto txt  = mtmd_input_text(&fullPrompt[0], true, true);
 mtmd.tokenize(chunks, txt, [bmp.ptr]);
 llama_pos nPast;
 mtmd.evalChunks(ctx.ptr, chunks, 0, 0, 512, true, nPast);
@@ -19,6 +19,7 @@ mtmd.evalChunks(ctx.ptr, chunks, 0, 0, 512, true, nPast);
 module llama.mtmd;
 
 import llama.llama; // llama_model, llama_context, llama_token, llama_pos, llama_seq_id
+import llama.owned;
 
 // ── Callback aliases (matching ggml.h / ggml-backend.h) ────────────────────
 /// Logging callback: `level` is `ggml_log_level` cast to int.
@@ -232,24 +233,13 @@ int mtmd_helper_decode_image_chunk(
 extern(D):
 
 /++
-RAII owner of a `mtmd_bitmap*`.
-
+An image or audio bitmap loaded from a file or raw buffer.
 Construct via `MtmdBitmap.fromRGB`, `MtmdBitmap.fromAudio`, or
-`MtmdContext.loadBitmap`. Not copyable; move via `std.algorithm.move`.
+`MtmdContext.loadBitmap`.
 +/
 struct MtmdBitmap
 {
-    private mtmd_bitmap* _bmp;
-
-    @disable this();
-    @disable this(this);
-
-    private this(mtmd_bitmap* b) @nogc nothrow { _bmp = b; }
-
-    ~this() @nogc nothrow
-    {
-        if (_bmp) { mtmd_bitmap_free(_bmp); _bmp = null; }
-    }
+    mixin Owned!(mtmd_bitmap, mtmd_bitmap_free);
 
     /++ Create from a raw RGB pixel buffer (`RGBRGBRGB…`). `data.length` must equal `nx * ny * 3`. +/
     static MtmdBitmap fromRGB(uint nx, uint ny, scope const(ubyte)[] data) @trusted @nogc nothrow
@@ -264,44 +254,30 @@ struct MtmdBitmap
         return MtmdBitmap(mtmd_bitmap_init_from_audio(samples.length, samples.ptr));
     }
 
-    bool opCast(T : bool)() const @nogc nothrow { return _bmp !is null; }
-
-    @property uint          nx()      const @nogc nothrow { return mtmd_bitmap_get_nx(_bmp); }
-    @property uint          ny()      const @nogc nothrow { return mtmd_bitmap_get_ny(_bmp); }
-    @property bool          isAudio() const @nogc nothrow { return mtmd_bitmap_is_audio(_bmp); }
-    @property mtmd_bitmap*  ptr()           @nogc nothrow { return _bmp; }
+    @property uint          nx()      const @nogc nothrow { return mtmd_bitmap_get_nx(_ptr); }
+    @property uint          ny()      const @nogc nothrow { return mtmd_bitmap_get_ny(_ptr); }
+    @property bool          isAudio() const @nogc nothrow { return mtmd_bitmap_is_audio(_ptr); }
 
     /// Raw pixel/sample bytes (read-only slice into C memory).
     @property const(ubyte)[] data() const @trusted @nogc nothrow
     {
-        return mtmd_bitmap_get_data(_bmp)[0 .. mtmd_bitmap_get_n_bytes(_bmp)];
+        return mtmd_bitmap_get_data(_ptr)[0 .. mtmd_bitmap_get_n_bytes(_ptr)];
     }
 
     /// Optional KV-cache tracking ID.
-    const(char)* id()              const @nogc nothrow { return mtmd_bitmap_get_id(_bmp); }
-    void         setId(const(char)* s)   @nogc nothrow { mtmd_bitmap_set_id(_bmp, s); }
+    const(char)* id()              const @nogc nothrow { return mtmd_bitmap_get_id(_ptr); }
+    void         setId(const(char)* s)   @nogc nothrow { mtmd_bitmap_set_id(_ptr, s); }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 
 /++
-RAII owner of a `mtmd_input_chunks*` list.
-Populated by `MtmdContext.tokenize`.
+A list of tokenized input chunks produced by `MtmdContext.tokenize`.
 Supports `foreach` iteration over `const(mtmd_input_chunk)*` elements.
 +/
 struct InputChunks
 {
-    private mtmd_input_chunks* _chunks;
-
-    @disable this();
-    @disable this(this);
-
-    private this(mtmd_input_chunks* c) @nogc nothrow { _chunks = c; }
-
-    ~this() @nogc nothrow
-    {
-        if (_chunks) { mtmd_input_chunks_free(_chunks); _chunks = null; }
-    }
+    mixin Owned!(mtmd_input_chunks, mtmd_input_chunks_free);
 
     /// Create an empty chunk list (to be filled by `MtmdContext.tokenize`).
     static InputChunks create() @nogc nothrow
@@ -310,14 +286,14 @@ struct InputChunks
     }
 
     /// Number of chunks.
-    @property size_t length() const @nogc nothrow { return mtmd_input_chunks_size(_chunks); }
+    @property size_t length() const @nogc nothrow { return mtmd_input_chunks_size(_ptr); }
     /// True when no chunks are present.
     @property bool   empty()  const @nogc nothrow { return length == 0; }
 
     /// Index into the chunk list.
     const(mtmd_input_chunk)* opIndex(size_t idx) const @nogc nothrow
     {
-        return mtmd_input_chunks_get(_chunks, idx);
+        return mtmd_input_chunks_get(_ptr, idx);
     }
 
     /// `foreach (chunk; chunks)` — iterates each `const(mtmd_input_chunk)*`.
@@ -336,35 +312,22 @@ struct InputChunks
         return 0;
     }
 
-    /// Raw C pointer (passed to helper functions).
-    @property mtmd_input_chunks*       ptr()       @nogc nothrow { return _chunks; }
-    @property const(mtmd_input_chunks)* ptr() const @nogc nothrow { return _chunks; }
-
     /// Total token count across all chunks.
-    @property size_t    nTokens() const @nogc nothrow { return mtmd_helper_get_n_tokens(_chunks); }
+    @property size_t    nTokens() const @nogc nothrow { return mtmd_helper_get_n_tokens(_ptr); }
     /// Total position count (may differ from `nTokens` for M-RoPE models).
-    @property llama_pos nPos()    const @nogc nothrow { return mtmd_helper_get_n_pos(_chunks); }
+    @property llama_pos nPos()    const @nogc nothrow { return mtmd_helper_get_n_pos(_ptr); }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
 
 /++
-RAII owner of a `mtmd_context*` (multimodal projector).
-Initialise via `MtmdContext.initFromFile`. Check `if (ctx)` after construction.
+A multimodal projector context loaded from a GGUF file.
+Encodes images and audio into embeddings for the paired language model.
+Check `if (ctx)` after construction.
 +/
 struct MtmdContext
 {
-    private mtmd_context* _ctx;
-
-    @disable this();
-    @disable this(this);
-
-    private this(mtmd_context* c) @nogc nothrow { _ctx = c; }
-
-    ~this() @nogc nothrow
-    {
-        if (_ctx) { mtmd_free(_ctx); _ctx = null; }
-    }
+    mixin Owned!(mtmd_context, mtmd_free);
 
     /// Load a projector from a GGUF file. Returns a falsy context on failure or null model.
     static MtmdContext initFromFile(
@@ -384,26 +347,23 @@ struct MtmdContext
         return initFromFile(mmproj, model, p);
     }
 
-    bool opCast(T : bool)() const @nogc nothrow { return _ctx !is null; }
+    @property bool supportsVision() @nogc nothrow { return mtmd_support_vision(_ptr); }
+    @property bool supportsAudio()  @nogc nothrow { return mtmd_support_audio(_ptr); }
+    @property bool useNonCausal()   @nogc nothrow { return mtmd_decode_use_non_causal(_ptr); }
+    @property bool useMrope()       @nogc nothrow { return mtmd_decode_use_mrope(_ptr); }
+    @property int  audioSampleRate()@nogc nothrow { return mtmd_get_audio_sample_rate(_ptr); }
 
-    @property mtmd_context* ptr()         @nogc nothrow { return _ctx; }
-    @property bool supportsVision()       @nogc nothrow { return mtmd_support_vision(_ctx); }
-    @property bool supportsAudio()        @nogc nothrow { return mtmd_support_audio(_ctx); }
-    @property bool useNonCausal()         @nogc nothrow { return mtmd_decode_use_non_causal(_ctx); }
-    @property bool useMrope()             @nogc nothrow { return mtmd_decode_use_mrope(_ctx); }
-    @property int  audioSampleRate()      @nogc nothrow { return mtmd_get_audio_sample_rate(_ctx); }
-
-    /// Load an image or audio file into an owned bitmap.  Returns falsy bitmap on failure.
+    /// Load an image or audio file into an owned bitmap. Returns falsy bitmap on failure.
     MtmdBitmap loadBitmap(string path) @trusted nothrow
     {
         import std.string : toStringz;
-        return MtmdBitmap(mtmd_helper_bitmap_init_from_file(_ctx, path.toStringz));
+        return MtmdBitmap(mtmd_helper_bitmap_init_from_file(_ptr, path.toStringz));
     }
 
     /// Load a bitmap from an in-memory byte buffer.
     MtmdBitmap loadBitmapFromBuf(const(ubyte)[] buf) @trusted @nogc nothrow
     {
-        return MtmdBitmap(mtmd_helper_bitmap_init_from_buf(_ctx, buf.ptr, buf.length));
+        return MtmdBitmap(mtmd_helper_bitmap_init_from_buf(_ptr, buf.ptr, buf.length));
     }
 
     /++
@@ -416,7 +376,7 @@ struct MtmdContext
         scope ref mtmd_input_text text,
         const(mtmd_bitmap*)[]     bitmaps = null) @trusted @nogc nothrow
     {
-        return mtmd_tokenize(_ctx, output.ptr, &text, bitmaps.ptr, bitmaps.length);
+        return mtmd_tokenize(_ptr, output.ptr, &text, bitmaps.ptr, bitmaps.length);
     }
 
     /++
@@ -434,17 +394,17 @@ struct MtmdContext
         ref llama_pos         newNPast) @trusted @nogc nothrow
     {
         return mtmd_helper_eval_chunks(
-            _ctx, lctx, chunks.ptr,
+            _ptr, lctx, chunks.ptr,
             nPast, seqId, nBatch, logitsLast, &newNPast);
     }
 
-    /// Encode a single image chunk and return its embeddings.
-    /// Returns 0 on success; the embedding pointer is valid until the next encode.
+    /// Encode a single image chunk. Returns 0 on success; the embedding pointer
+    /// is valid until the next encode call.
     int encodeChunk(const(mtmd_input_chunk)* chunk) @nogc nothrow
     {
-        return mtmd_encode_chunk(_ctx, chunk);
+        return mtmd_encode_chunk(_ptr, chunk);
     }
 
     /// Pointer to the most recently encoded embeddings.
-    float* outputEmbd() @nogc nothrow { return mtmd_get_output_embd(_ctx); }
+    float* outputEmbd() @nogc nothrow { return mtmd_get_output_embd(_ptr); }
 }
