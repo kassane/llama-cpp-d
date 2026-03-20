@@ -149,22 +149,43 @@ jobs:
         if: matrix.config == 'vulkan' && runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y glslang libvulkan-dev
+          sudo apt-get install -y glslc libvulkan-dev libssl-dev
 
+      # humbletim/setup-vulkan-sdk sets VULKAN_SDK; cmake FindVulkan picks it up automatically.
       - uses: humbletim/setup-vulkan-sdk@main
-        if: runner.os == 'Windows'
+        if: matrix.config == 'vulkan' && runner.os == 'Windows'
         with:
           vulkan-query-version: 1.4.335.0
           vulkan-components: Vulkan-Headers, Vulkan-Loader
           vulkan-use-cache: true
-      
-      - name: Install Vulkan SDK (Windows)
-        if: matrix.config == 'vulkan' && runner.os == 'Windows'
+
+      - name: Install CUDA toolkit (Linux)
+        if: matrix.config == 'cuda' && runner.os == 'Linux'
+        uses: Jimver/cuda-toolkit@v0.2.19
+        with:
+          cuda: '12.6.0'
+          method: network
+          sub-packages: '["nvcc", "libcublas-dev", "libcudart-dev"]'
+
+      - name: Install ROCm / hipBLAS (Linux)
+        if: matrix.config == 'hipblas' && runner.os == 'Linux'
         run: |
-          echo ${VULKAN_SDK} >> $GITHUB_ENV
-          echo ${VULKAN_SDK}/Bin >> $GITHUB_PATH
-          echo ${VULKAN_SDK}/Lib >> $GITHUB_PATH
-          echo ${VULKAN_SDK}/Include >> $GITHUB_PATH
+          # AMD ROCm 6.x repo (matches upstream container rocm/dev-ubuntu-22.04:6.1.2)
+          wget -qO - https://repo.radeon.com/rocm/rocm.gpg.key | sudo apt-key add -
+          echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.1.2/ jammy main" \
+            | sudo tee /etc/apt/sources.list.d/rocm.list
+          sudo apt-get update
+          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev
+
+      - name: Install oneAPI SYCL (Linux)
+        if: matrix.config == 'sycl' && runner.os == 'Linux'
+        run: |
+          # Intel oneAPI repo (matches upstream ubuntu-22-sycl job)
+          wget -qO - https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+            | sudo apt-key add -
+          sudo add-apt-repository "deb https://apt.repos.intel.com/oneapi all main"
+          sudo apt-get update
+          sudo apt-get install -y intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mkl-devel
 
       # ── Build library ─────────────────────────────────────────────────────────
 

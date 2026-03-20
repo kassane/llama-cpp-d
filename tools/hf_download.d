@@ -1,27 +1,30 @@
 /++
 Download GGUF files from HuggingFace Hub.
 
-Without -f, lists .gguf files with sizes.  With -f, downloads via curl.
+Without -f, lists .gguf files with sizes.  With -f, downloads with a progress bar.
 Auth: -t token or HF_TOKEN env var (private repos / higher rate limits).
 
 Usage:
   hf-download -r owner/repo [-f file] [-o outdir] [-t token]
 
-Requires curl in PATH. Uses popen/system instead of std.net.curl,
-which breaks under -preview=all.
+Listing uses popen+curl (std.net.curl breaks under -preview=all).
+Download uses std.net.curl.HTTP with a live progress bar.
 +/
 module hf_download;
 
-import std.stdio        : writefln, writeln, stderr;
-import std.string       : endsWith, indexOf, toStringz, strip;
-import std.conv         : to;
-import std.file         : mkdirRecurse, exists;
-import std.path         : buildPath, baseName;
+import std.stdio     : write, writeln, writefln, stderr, stdout;
+import std.string    : endsWith, indexOf, toStringz;
+import std.conv      : to;
+import std.file      : mkdirRecurse, exists, fileWrite = write;
+import std.path      : buildPath, baseName;
+import std.net.curl  : HTTP;
+import std.array     : appender, replicate;
+import std.exception : enforce;
+import std.format    : format;
 import core.stdc.stdio  : fgets, printf, snprintf;
-import core.stdc.stdlib : system;
 import core.stdc.string : strlen;
 
-// Windows spells these _popen/_pclose.
+// Listing uses popen+curl; Windows spells these _popen/_pclose.
 version(Posix)
 {
     import core.sys.posix.stdio : popen, pclose;
@@ -55,53 +58,46 @@ struct GgufFile
 
 int main(string[] args)
 {
-    string repo;
-    string filename;
-    string outDir  = ".";
-    string token   = envGet("HF_TOKEN");
-    bool   listAll = false;
+    struct Options
+    {
+        string repo;
+        string filename;
+        string outDir  = ".";
+        string token;
+        bool   listAll;
+        bool   help;
+    }
+
+    Options opts;
+    opts.token = envGet("HF_TOKEN");
 
     for (int i = 1; i < cast(int) args.length; i++)
-    {
-        switch (args[i])
+        with (opts) switch (args[i])
         {
-            case "-r":
-                if (++i < cast(int) args.length) repo = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-f":
-                if (++i < cast(int) args.length) filename = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-o":
-                if (++i < cast(int) args.length) outDir = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-t":
-                if (++i < cast(int) args.length) token = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-l", "--list":
-                listAll = true;
-                break;
-            case "-h", "--help":
-                return printUsage(args[0]);
+            case "-r": if (++i < cast(int) args.length) repo     = args[i]; else return printUsage(args[0]); break;
+            case "-f": if (++i < cast(int) args.length) filename = args[i]; else return printUsage(args[0]); break;
+            case "-o": if (++i < cast(int) args.length) outDir   = args[i]; else return printUsage(args[0]); break;
+            case "-t": if (++i < cast(int) args.length) token    = args[i]; else return printUsage(args[0]); break;
+            case "-l", "--list": listAll = true; break;
+            case "-h", "--help": help    = true; break;
             default:
                 stderr.writefln("unknown option: %s", args[i]);
                 return printUsage(args[0]);
         }
-    }
 
-    if (repo.length == 0)
+    if (args.length < 2 || opts.help)
+        return printUsage(args[0]);
+
+    if (opts.repo.length == 0)
     {
         stderr.writeln("error: -r owner/repo is required");
         return printUsage(args[0]);
     }
 
-    if (filename.length == 0 || listAll)
-        return listGgufFiles(repo, token);
+    if (opts.filename.length == 0 || opts.listAll)
+        return listGgufFiles(opts.repo, opts.token);
     else
-        return downloadFile(repo, filename, outDir, token);
+        return downloadFile(opts.repo, opts.filename, opts.outDir, opts.token);
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
@@ -167,26 +163,55 @@ int downloadFile(string repo, string filename, string outDir, string token)
     writefln("  to   : %s", outPath);
     writeln();
 
-    // --progress-bar writes to stderr so it shows live in the terminal.
-    string cmd = "curl -L --progress-bar";
-    if (token.length)
-        cmd ~= " -H \"Authorization: Bearer " ~ token ~ "\"";
-    cmd ~= " -o \"" ~ outPath ~ "\" \"" ~ url ~ "\"";
-
-    int rc = systemCmd(cmd);
-    if (rc != 0)
+    try
+        download(url, outPath, token);
+    catch (Exception e)
     {
-        stderr.writefln("error: curl exited with code %d", rc);
+        stderr.writefln("error: %s", e.msg);
         return 1;
     }
 
-    writefln("\nSaved: %s", outPath);
+    writefln("Saved: %s", outPath);
     return 0;
+}
+
+void download(string url, string fileName, string token = "") @trusted
+{
+    auto buf = appender!(ubyte[])();
+    size_t contentLength;
+    auto http = HTTP(url);
+    if (token.length)
+        http.addRequestHeader("Authorization", "Bearer " ~ token);
+    http.onReceiveHeader((in k, in v) {
+        if (k == "content-length")
+            contentLength = to!size_t(v);
+    });
+
+    enum barWidth = 50;
+    http.onReceive((data) {
+        buf.put(data);
+        if (contentLength)
+        {
+            float progress = cast(float) buf.data.length / contentLength;
+            write("\r[",
+                "=".replicate(cast(int)(barWidth * progress)), ">",
+                " ".replicate(barWidth - cast(int)(barWidth * progress)),
+                "] ", format("%d%%", cast(int)(progress * 100)));
+            stdout.flush();
+        }
+        return data.length;
+    });
+
+    http.perform();
+    enforce(http.statusLine.code / 100 == 2 || http.statusLine.code == 302,
+        format("HTTP request failed: %s", http.statusLine.code));
+    fileWrite(fileName, buf.data);
+    writeln();
 }
 
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 
-// popen+curl GET; std.net.curl breaks under -preview=all.
+// popen+curl for API GET; std.net.curl.HTTP template bodies break under -preview=all.
 string httpGet(string url, string token) @trusted
 {
     string cmd = "curl -sf -L";
@@ -208,11 +233,6 @@ string httpGet(string url, string token) @trusted
         throw new Exception("curl exited with code " ~ rc.to!string);
 
     return result;
-}
-
-int systemCmd(string cmd) @trusted nothrow
-{
-    return system(cmd.toStringz);
 }
 
 // ── JSON helpers ──────────────────────────────────────────────────────────────

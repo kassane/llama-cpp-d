@@ -1,6 +1,6 @@
 {
 	"name": "llama-cpp-d",
-	"description": "llama-cpp bindings for D",
+	"description": "D bindings for llama-cpp",
 	"license": "MIT",
 	"authors": [
 		"Matheus Catarino França"
