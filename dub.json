@@ -224,6 +224,13 @@
 			"libs-windows": [
 				"vulkan-1"
 			],
+			"environments-windows": {
+				"ENVIRONMENTS": "root.environments",
+				"VULKAN_SDK": "${VULKAN_SDK}"
+			},
+			"lflags-windows": [
+				"/LIBPATH:$VULKAN_SDK\\Lib"
+			],
 			"lflags-posix": [
 				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-vulkan"
 			],
