@@ -188,14 +188,16 @@ jobs:
           echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.1.2/ $DISTRO main" \
             | sudo tee /etc/apt/sources.list.d/rocm.list
           sudo apt-get update
-          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev hip-dev hip-base rocm-device-libs
-          # Packages install to /opt/rocm-6.1.2; rocm-core would create the /opt/rocm symlink
-          # but isn't always pulled in. Create it manually so cmake finds the HIP root.
+          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev hip-dev hip-base rocm-device-libs rocm-core
+          # rocm-core creates the /opt/rocm symlink via /etc/profile.d/rocm.sh; create it
+          # manually here so it is available immediately without a shell restart.
           ROCM_DIR=$(ls -d /opt/rocm-* 2>/dev/null | sort -V | tail -1)
           if [ -n "$ROCM_DIR" ] && [ ! -e /opt/rocm ]; then
             sudo ln -sf "$ROCM_DIR" /opt/rocm
           fi
-          echo "ROCM_PATH=${ROCM_DIR:-/opt/rocm}" >> $GITHUB_ENV
+          echo "/opt/rocm/bin" >> $GITHUB_PATH
+          echo "ROCM_PATH=/opt/rocm" >> $GITHUB_ENV
+          echo "HIP_PATH=/opt/rocm" >> $GITHUB_ENV
 
       - name: Install oneAPI SYCL (Linux)
         if: matrix.config == 'sycl' && runner.os == 'Linux'
