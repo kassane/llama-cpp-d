@@ -177,9 +177,17 @@
 				"ggml-cpu",
 				"openblas"
 			],
-			"preBuildCommands-posix": [
+			"lflags-osx": [
+				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-blas"
+			],
+			"preBuildCommands-linux": [
 				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
 				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
+				"cmake --build $PACKAGE_DIR/build/llama.cpp-build --config Release --target llama"
+			],
+			"preBuildCommands-osx": [
+				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
+				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_PREFIX_PATH=$(brew --prefix openblas) -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
 				"cmake --build $PACKAGE_DIR/build/llama.cpp-build --config Release --target llama"
 			],
 			"preBuildCommands-windows": [
@@ -322,16 +330,10 @@
 			"lflags-posix": [
 				"-L$PACKAGE_DIR/build/llama.cpp-build/ggml/src/ggml-sycl"
 			],
-			"preBuildCommands-posix": [
+			"preBuildCommands-linux": [
 				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
-				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_SYCL=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
+				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_SYCL=ON -DCMAKE_C_COMPILER=icx -DCMAKE_CXX_COMPILER=icpx -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
 				"cmake --build $PACKAGE_DIR/build/llama.cpp-build --config Release --target llama"
-			],
-			"preBuildCommands-windows": [
-				"if not exist \"$PACKAGE_DIR\\llama.cpp-master\" powershell -Command \"(New-Object Net.WebClient).DownloadFile('https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.zip', '$PACKAGE_DIR\\llama_cpp.zip')\"",
-				"if not exist \"$PACKAGE_DIR\\llama.cpp-master\" powershell -Command \"Expand-Archive -Path '$PACKAGE_DIR\\llama_cpp.zip' -DestinationPath '$PACKAGE_DIR' -Force; Remove-Item '$PACKAGE_DIR\\llama_cpp.zip'\"",
-				"cmake -S \"$PACKAGE_DIR\\llama.cpp-master\" -B \"$PACKAGE_DIR\\build\\llama.cpp-build\" -DCMAKE_BUILD_TYPE=Release -DGGML_SYCL=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
-				"cmake --build \"$PACKAGE_DIR\\build\\llama.cpp-build\" --config Release --target llama"
 			]
 		},
 		{

@@ -12,10 +12,7 @@
 	"toolchainRequirements": {
 		"frontend": ">=2.111.0"
 	},
-	"dflags": [
-		"-preview=all"
-	],
-	"buildTypes": {
+"buildTypes": {
 		"debug": {
 			"buildOptions": [
 				"debugMode",

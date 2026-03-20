@@ -2,6 +2,7 @@
 *.o
 *.obj
 *.bin
+*.gguf
 
 # Compiled Dynamic libraries
 *.so

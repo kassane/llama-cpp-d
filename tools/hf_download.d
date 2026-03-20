@@ -6,9 +6,6 @@ Auth: -t token or HF_TOKEN env var (private repos / higher rate limits).
 
 Usage:
   hf-download -r owner/repo [-f file] [-o outdir] [-t token]
-
-Listing uses popen+curl (std.net.curl breaks under -preview=all).
-Download uses std.net.curl.HTTP with a live progress bar.
 +/
 module hf_download;
 
@@ -41,7 +38,7 @@ else version(Windows)
     alias pclose = _pclose;
 }
 
-// std.process.environment breaks under -preview=all.
+
 version(Posix)
     import core.sys.posix.stdlib : c_getenv = getenv;
 else version(Windows)
@@ -211,7 +208,6 @@ void download(string url, string fileName, string token = "") @trusted
 
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 
-// popen+curl for API GET; std.net.curl.HTTP template bodies break under -preview=all.
 string httpGet(string url, string token) @trusted
 {
     string cmd = "curl -sf -L";
@@ -236,7 +232,6 @@ string httpGet(string url, string token) @trusted
 }
 
 // ── JSON helpers ──────────────────────────────────────────────────────────────
-// No std.json — breaks under -preview=all.
 
 bool hasJsonKey(string json, string key) pure nothrow @safe
 {
@@ -310,7 +305,6 @@ GgufFile[] extractGgufFiles(string json) pure @safe
     return files;
 }
 
-// std.algorithm.sort breaks under -preview=all.
 void insertionSort(GgufFile[] arr) @safe nothrow
 {
     for (size_t i = 1; i < arr.length; i++)
@@ -359,9 +353,6 @@ string envGet(string name) @trusted nothrow
 }
 
 // ── Formatting ────────────────────────────────────────────────────────────────
-// printf only; writefln+float breaks under -preview=all.
-
-// Two alternating buffers so a single printf can call fmtBytes() twice.
 const(char)* fmtBytes(ulong n) @trusted nothrow
 {
     static char[32][2] bufs;
@@ -395,7 +386,6 @@ string humanBytes(ulong n) @trusted nothrow
 
 int printUsage(string prog) @trusted nothrow
 {
-    // prog.ptr is not null-terminated; toStringz makes a safe C string.
     auto p = prog.toStringz;
     printf(
         "\nusage: %s -r owner/repo [-f file] [-o outdir] [-t token]\n\n"
