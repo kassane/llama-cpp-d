@@ -187,7 +187,7 @@
 			],
 			"preBuildCommands-osx": [
 				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
-				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_PREFIX_PATH=$(brew --prefix openblas) -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
+				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DCMAKE_PREFIX_PATH=$OPENBLAS_PREFIX -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
 				"cmake --build $PACKAGE_DIR/build/llama.cpp-build --config Release --target llama"
 			],
 			"preBuildCommands-windows": [
@@ -306,7 +306,7 @@
 			],
 			"preBuildCommands-linux": [
 				"test -d $PACKAGE_DIR/llama.cpp-master || (curl -sL https://github.com/ggml-org/llama.cpp/archive/refs/heads/master.tar.gz -o llama_cpp.tar.gz && tar -xzf llama_cpp.tar.gz -C $PACKAGE_DIR && rm llama_cpp.tar.gz)",
-				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
+				"cmake -S $PACKAGE_DIR/llama.cpp-master -B $PACKAGE_DIR/build/llama.cpp-build -GNinja -DCMAKE_BUILD_TYPE=Release -DGGML_HIP=ON -DCMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang -DAMDGPU_TARGETS=gfx906 -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF -DLLAMA_BUILD_TOOLS=OFF -DBUILD_SHARED_LIBS=OFF -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF",
 				"cmake --build $PACKAGE_DIR/build/llama.cpp-build --config Release --target llama"
 			]
 		},

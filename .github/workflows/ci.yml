@@ -139,7 +139,11 @@ jobs:
 
       - name: Install OpenBLAS (macOS)
         if: matrix.config == 'openblas' && runner.os == 'macOS'
-        run: brew install openblas
+        run: |
+          brew install openblas
+          # Export path so dub's preBuildCommands-osx can reference it as $OPENBLAS_PREFIX.
+          # $(brew --prefix) inside dub.json strings is parsed as a dub variable and fails.
+          echo "OPENBLAS_PREFIX=$(brew --prefix openblas)" >> $GITHUB_ENV
 
       - name: Install libomp (macOS)
         if: matrix.config == 'openmp' && runner.os == 'macOS'
@@ -166,11 +170,11 @@ jobs:
 
       - name: Install CUDA toolkit (Linux)
         if: matrix.config == 'cuda' && runner.os == 'Linux'
-        uses: Jimver/cuda-toolkit@v0.2.19
-        with:
-          cuda: '12.6.0'
-          method: network
-          sub-packages: '["nvcc", "libcublas-dev", "libcudart-dev"]'
+        run: |
+          wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update -qq
+          sudo apt-get install -y cuda-nvcc-12-6 cuda-cudart-dev-12-6 libcublas-dev-12-6
 
       - name: Install ROCm / hipBLAS (Linux)
         if: matrix.config == 'hipblas' && runner.os == 'Linux'
@@ -180,7 +184,7 @@ jobs:
           echo "deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.1.2/ jammy main" \
             | sudo tee /etc/apt/sources.list.d/rocm.list
           sudo apt-get update
-          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev
+          sudo apt-get install -y rocblas-dev hipblas-dev rocwmma-dev hip-dev
 
       - name: Install oneAPI SYCL (Linux)
         if: matrix.config == 'sycl' && runner.os == 'Linux'
