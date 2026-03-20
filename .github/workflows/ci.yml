@@ -88,7 +88,7 @@ jobs:
         env:
           MODEL: ${{env.MODEL_FILE}}
         run: |
-          ./examples/build/simple          -m "$MODEL" -n 32 "Hello, D!"
-          ./examples/build/tokenize        -m "$MODEL" "Hello, world!"
-          ./examples/build/embedding       -m "$MODEL"
-          ./examples/build/save-load-state -m "$MODEL" -n 8
+          ./examples/build/_simple          -m "$MODEL" -n 32 "Hello, D!"
+          ./examples/build/_tokenize        -m "$MODEL" "Hello, world!"
+          ./examples/build/_embedding       -m "$MODEL"
+          ./examples/build/_save-load-state -m "$MODEL" -n 8
