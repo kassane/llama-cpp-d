@@ -11,29 +11,21 @@ env:
   MODEL_FILE: Qwen3.5-0.8B-Q4_K_M.gguf
 
 jobs:
+  # ── Compiler × OS matrix ────────────────────────────────────────────────────
+  # Builds default config on all supported compilers, runs the unittest suite,
+  # and exercises all examples against a real GGUF model on Posix.
   build:
+    name: Build (${{matrix.compiler}}, ${{matrix.os}})
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            arch: amd64
-            compiler: dmd-latest
-          - os: ubuntu-latest
-            arch: amd64
-            compiler: ldc-master
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            compiler: ldc-master
-          - os: macos-latest
-            arch: arm64
-            compiler: ldc-master
-          - os: windows-latest
-            arch: amd64
-            compiler: dmd-latest
-          - os: windows-latest
-            arch: amd64
-            compiler: ldc-master
-      fail-fast: false
+          - {os: ubuntu-latest,    arch: amd64, compiler: dmd-latest}
+          - {os: ubuntu-latest,    arch: amd64, compiler: ldc-master}
+          - {os: ubuntu-24.04-arm, arch: arm64, compiler: ldc-master}
+          - {os: macos-latest,     arch: arm64, compiler: ldc-master}
+          - {os: windows-latest,   arch: amd64, compiler: dmd-latest}
+          - {os: windows-latest,   arch: amd64, compiler: ldc-master}
     runs-on: ${{matrix.os}}
     steps:
       - uses: actions/checkout@main
@@ -64,8 +56,7 @@ jobs:
           dub build :multimodal
 
       # ── Model download + example runs (Posix only) ──────────────────────────
-      # Windows is excluded: example runs require a GGUF model, and CPU-only
-      # inference on Windows CI runners is prohibitively slow.
+      # Skipped on Windows: CPU-only inference on Windows CI runners is slow.
 
       - name: Cache model
         id: cache-model
@@ -92,3 +83,102 @@ jobs:
           ./examples/build/_tokenize        -m "$MODEL" "Hello, world!"
           ./examples/build/_embedding       -m "$MODEL"
           ./examples/build/_save-load-state -m "$MODEL" -n 8
+
+  # ── Backend config matrix ────────────────────────────────────────────────────
+  # Builds the llama-cpp-d library (and a representative example where the
+  # config is also defined in examples/dub.json) in every dub configuration.
+  #
+  # GPU configs (cuda, hipblas, sycl) are marked allow_failure: true —
+  # they require hardware / large SDKs not available on standard CI runners.
+  # They are included so the matrix documents all supported configs and any
+  # accidental breakage in the dub.json / cmake wiring is caught early.
+  configs:
+    name: Config ${{matrix.config}} (${{matrix.os}})
+    continue-on-error: ${{matrix.allow_failure == true}}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux ────────────────────────────────────────────────────────────
+          - {os: ubuntu-latest, compiler: ldc-master, config: mtmd}
+          - {os: ubuntu-latest, compiler: ldc-master, config: openblas}
+          - {os: ubuntu-latest, compiler: ldc-master, config: openmp}
+          - {os: ubuntu-latest, compiler: ldc-master, config: vulkan}
+          # GPU — expected to fail on standard runners (no CUDA/ROCm/oneAPI)
+          - {os: ubuntu-latest, compiler: ldc-master, config: cuda,    allow_failure: true}
+          - {os: ubuntu-latest, compiler: ldc-master, config: hipblas, allow_failure: true}
+          - {os: ubuntu-latest, compiler: ldc-master, config: sycl,    allow_failure: true}
+
+          # ── macOS ────────────────────────────────────────────────────────────
+          - {os: macos-latest, compiler: ldc-master, config: metal}
+          - {os: macos-latest, compiler: ldc-master, config: openblas}
+          - {os: macos-latest, compiler: ldc-master, config: openmp}
+
+          # ── Windows ──────────────────────────────────────────────────────────
+          - {os: windows-latest, compiler: ldc-master, config: openmp}
+          - {os: windows-latest, compiler: ldc-master, config: vulkan}
+
+    runs-on: ${{matrix.os}}
+    steps:
+      - uses: actions/checkout@main
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: latest
+          ninjaVersion: latest
+
+      - uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ${{matrix.compiler}}
+
+      # ── SDK / dependency installs (conditional per config × OS) ──────────────
+
+      - name: Install OpenBLAS (Linux)
+        if: matrix.config == 'openblas' && runner.os == 'Linux'
+        run: sudo apt-get install -y libopenblas-dev
+
+      - name: Install OpenBLAS (macOS)
+        if: matrix.config == 'openblas' && runner.os == 'macOS'
+        run: brew install openblas
+
+      - name: Install libomp (macOS)
+        if: matrix.config == 'openmp' && runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Install Vulkan SDK (Linux)
+        if: matrix.config == 'vulkan' && runner.os == 'Linux'
+        run: |
+          DISTRO=$(lsb_release -cs)
+          wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/lunarg.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/lunarg.gpg] \
+            https://packages.lunarg.com/vulkan ${DISTRO} main" \
+            | sudo tee /etc/apt/sources.list.d/lunarg-vulkan.list
+          sudo apt-get update -qq
+          sudo apt-get install -y vulkan-sdk
+
+      - name: Install Vulkan SDK (Windows)
+        if: matrix.config == 'vulkan' && runner.os == 'Windows'
+        run: winget install KhronosGroup.VulkanSDK --silent --accept-source-agreements --accept-package-agreements
+
+      # ── Build library ─────────────────────────────────────────────────────────
+
+      - name: Build library
+        run: dub build --config=${{matrix.config}}
+
+      # ── Build example (only for configs also defined in examples/dub.json) ───
+      # This exercises the subConfigurations propagation from examples → library.
+      # openblas/openmp/mtmd are not listed in examples/dub.json, so skipped.
+
+      - name: Build example (simple)
+        if: >
+          matrix.config == 'vulkan' ||
+          matrix.config == 'metal'
+        working-directory: examples
+        run: dub build :simple --config=${{matrix.config}}
+
+      - name: Build example (multimodal)
+        if: matrix.config == 'mtmd'
+        working-directory: examples
+        run: dub build :multimodal
