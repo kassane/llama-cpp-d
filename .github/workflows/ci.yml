@@ -60,7 +60,7 @@ jobs:
 
       - name: Cache model
         id: cache-model
-        uses: actions/cache@v4
+        uses: actions/cache@main
         if: runner.os != 'Windows'
         with:
           path: ${{env.MODEL_FILE}}
