@@ -113,7 +113,7 @@
                 {
                     "name": "default",
                     "subConfigurations": {
-                        "llama-cpp-d": "mtmd"
+                        "llama-cpp-d": "mtmd-cpu"
                     }
                 },
                 {
