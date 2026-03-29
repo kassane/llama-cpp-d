@@ -78,7 +78,7 @@ int main(string[] args) @trusted
     }
 
     // ── Multimodal projector ─────────────────────────────────────────────────
-    auto mparams          = mtmd_context_params_default();
+    auto mparams          = MtmdContext.params();
     mparams.use_gpu       = useGpu;
     mparams.print_timings = true;
 
@@ -91,12 +91,12 @@ int main(string[] args) @trusted
 
     // ── Build prompt with optional media marker ──────────────────────────────
     bool   haveImage  = imagePath.length > 0;
-    string marker     = fromStringz(mtmd_default_marker()).idup;
+    string marker     = fromStringz(defaultMarker).idup;
     string fullPrompt = haveImage ? marker ~ "\n" ~ mcfg.prompt : mcfg.prompt;
 
     // ── Tokenise ─────────────────────────────────────────────────────────────
     auto chunks       = InputChunks.create();
-    auto inputTxt     = mtmd_input_text(&fullPrompt[0], /*add_special=*/true,
+    auto inputTxt     = inputText(&fullPrompt[0], /*add_special=*/true,
                                                         /*parse_special=*/true);
 
     if (haveImage)
@@ -108,7 +108,7 @@ int main(string[] args) @trusted
             stderr.writeln("error: failed to load image '", imagePath, "'");
             return 1;
         }
-        const(mtmd_bitmap)*[1] bitmapPtrs = [bitmapStore.ptr];
+        BitmapPtr bitmapPtrs = [bitmapStore.ptr];
         if (auto err = mtmd.tokenize(chunks, inputTxt, bitmapPtrs[]))
         {
             stderr.writefln("error: mtmd tokenization failed (code %d)", err);

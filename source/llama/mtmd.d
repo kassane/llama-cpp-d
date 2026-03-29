@@ -28,6 +28,10 @@ private import c.mtmd_stubs;
 
 // ── D wrappers ───────────────────────────────────────────────────────────────
 
+alias BitmapPtr = const(mtmd_bitmap*)[];
+alias inputText = mtmd_input_text;
+alias defaultMarker = mtmd_default_marker;
+
 /++
 An image or audio bitmap loaded from a file or raw buffer.
 Construct via `MtmdBitmap.fromRGB`, `MtmdBitmap.fromAudio`, or
@@ -51,9 +55,20 @@ struct MtmdBitmap
     }
 
     // importC drops `const` from C headers, so const methods need @trusted + cast.
-    @property uint nx()      const @trusted @nogc nothrow { return mtmd_bitmap_get_nx     (cast(mtmd_bitmap*) _ptr); }
-    @property uint ny()      const @trusted @nogc nothrow { return mtmd_bitmap_get_ny     (cast(mtmd_bitmap*) _ptr); }
-    @property bool isAudio() const @trusted @nogc nothrow { return mtmd_bitmap_is_audio   (cast(mtmd_bitmap*) _ptr); }
+    @property uint nx() const @trusted @nogc nothrow
+    {
+        return mtmd_bitmap_get_nx(cast(mtmd_bitmap*) _ptr);
+    }
+
+    @property uint ny() const @trusted @nogc nothrow
+    {
+        return mtmd_bitmap_get_ny(cast(mtmd_bitmap*) _ptr);
+    }
+
+    @property bool isAudio() const @trusted @nogc nothrow
+    {
+        return mtmd_bitmap_is_audio(cast(mtmd_bitmap*) _ptr);
+    }
 
     /// Raw pixel/sample bytes (read-only slice into C memory).
     @property const(ubyte)[] data() const @trusted @nogc nothrow
@@ -63,8 +78,15 @@ struct MtmdBitmap
     }
 
     /// Optional KV-cache tracking ID.
-    const(char)* id()              const @trusted @nogc nothrow { return mtmd_bitmap_get_id (cast(mtmd_bitmap*) _ptr); }
-    void         setId(const(char)* s)         @nogc nothrow { mtmd_bitmap_set_id(_ptr, s); }
+    const(char)* id() const @trusted @nogc nothrow
+    {
+        return mtmd_bitmap_get_id(cast(mtmd_bitmap*) _ptr);
+    }
+
+    void setId(const(char)* s) @nogc nothrow
+    {
+        mtmd_bitmap_set_id(_ptr, s);
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -84,9 +106,15 @@ struct InputChunks
     }
 
     /// Number of chunks.
-    @property size_t length() const @trusted @nogc nothrow { return mtmd_input_chunks_size(cast(mtmd_input_chunks*) _ptr); }
+    @property size_t length() const @trusted @nogc nothrow
+    {
+        return mtmd_input_chunks_size(cast(mtmd_input_chunks*) _ptr);
+    }
     /// True when no chunks are present.
-    @property bool   empty()  const @nogc nothrow { return length == 0; }
+    @property bool empty() const @nogc nothrow
+    {
+        return length == 0;
+    }
 
     /// Index into the chunk list.
     const(mtmd_input_chunk)* opIndex(size_t idx) const @trusted @nogc nothrow
@@ -98,7 +126,8 @@ struct InputChunks
     int opApply(scope int delegate(const(mtmd_input_chunk)*) dg) const
     {
         foreach (i; 0 .. length)
-            if (auto r = dg(this[i])) return r;
+            if (auto r = dg(this[i]))
+                return r;
         return 0;
     }
 
@@ -106,14 +135,21 @@ struct InputChunks
     int opApply(scope int delegate(size_t, const(mtmd_input_chunk)*) dg) const
     {
         foreach (i; 0 .. length)
-            if (auto r = dg(i, this[i])) return r;
+            if (auto r = dg(i, this[i]))
+                return r;
         return 0;
     }
 
     /// Total token count across all chunks.
-    @property size_t    nTokens() const @trusted @nogc nothrow { return mtmd_helper_get_n_tokens(cast(mtmd_input_chunks*) _ptr); }
+    @property size_t nTokens() const @trusted @nogc nothrow
+    {
+        return mtmd_helper_get_n_tokens(cast(mtmd_input_chunks*) _ptr);
+    }
     /// Total position count (may differ from `nTokens` for M-RoPE models).
-    @property llama_pos nPos()    const @trusted @nogc nothrow { return mtmd_helper_get_n_pos   (cast(mtmd_input_chunks*) _ptr); }
+    @property llama_pos nPos() const @trusted @nogc nothrow
+    {
+        return mtmd_helper_get_n_pos(cast(mtmd_input_chunks*) _ptr);
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -133,28 +169,53 @@ struct MtmdContext
         const(llama_model)* model,
         mtmd_context_params params) @trusted nothrow
     {
-        if (model is null) return MtmdContext(null);
+        if (model is null)
+            return MtmdContext(null);
         import std.string : toStringz;
+
         return MtmdContext(mtmd_init_from_file(mmproj.toStringz, cast(llama_model*) model, params));
     }
 
     /// Overload using default params.
     static MtmdContext initFromFile(string mmproj, const(llama_model)* model) nothrow
     {
-        auto p = mtmd_context_params_default();
-        return initFromFile(mmproj, model, p);
+        return initFromFile(mmproj, model, params);
     }
 
-    @property bool supportsVision() @nogc nothrow { return mtmd_support_vision(_ptr); }
-    @property bool supportsAudio()  @nogc nothrow { return mtmd_support_audio(_ptr); }
-    @property bool useNonCausal()   @nogc nothrow { return mtmd_decode_use_non_causal(_ptr); }
-    @property bool useMrope()       @nogc nothrow { return mtmd_decode_use_mrope(_ptr); }
-    @property int  audioSampleRate()@nogc nothrow { return mtmd_get_audio_sample_rate(_ptr); }
+    @property bool supportsVision() @nogc nothrow
+    {
+        return mtmd_support_vision(_ptr);
+    }
 
+    @property bool supportsAudio() @nogc nothrow
+    {
+        return mtmd_support_audio(_ptr);
+    }
+
+    @property bool useNonCausal() @nogc nothrow
+    {
+        return mtmd_decode_use_non_causal(_ptr);
+    }
+
+    @property bool useMrope() @nogc nothrow
+    {
+        return mtmd_decode_use_mrope(_ptr);
+    }
+
+    @property int audioSampleRate() @nogc nothrow
+    {
+        return mtmd_get_audio_sample_rate(_ptr);
+    }
+
+    @property static auto params() @nogc nothrow
+    {
+        return mtmd_context_params_default();
+    }
     /// Load an image or audio file into an owned bitmap. Returns falsy bitmap on failure.
     MtmdBitmap loadBitmap(string path) @trusted nothrow
     {
         import std.string : toStringz;
+
         return MtmdBitmap(mtmd_helper_bitmap_init_from_file(_ptr, path.toStringz));
     }
 
@@ -170,11 +231,12 @@ struct MtmdContext
     Returns 0 on success, 1 on count mismatch, 2 on preprocessing error.
     +/
     int tokenize(
-        ref InputChunks           output,
+        ref InputChunks output,
         scope ref mtmd_input_text text,
-        const(mtmd_bitmap*)[]     bitmaps = null) @trusted @nogc nothrow
+        BitmapPtr bitmaps = null) @trusted @nogc nothrow
     {
-        return mtmd_tokenize(_ptr, output.ptr, &text, cast(mtmd_bitmap**) bitmaps.ptr, bitmaps.length);
+        return mtmd_tokenize(_ptr, output.ptr, &text, cast(mtmd_bitmap**) bitmaps.ptr, bitmaps
+                .length);
     }
 
     /++
@@ -183,13 +245,13 @@ struct MtmdContext
     Returns 0 on success.
     +/
     int evalChunks(
-        llama_context*        lctx,
+        llama_context* lctx,
         ref const InputChunks chunks,
-        llama_pos             nPast,
-        llama_seq_id          seqId,
-        int                   nBatch,
-        bool                  logitsLast,
-        ref llama_pos         newNPast) @trusted @nogc nothrow
+        llama_pos nPast,
+        llama_seq_id seqId,
+        int nBatch,
+        bool logitsLast,
+        ref llama_pos newNPast) @trusted @nogc nothrow
     {
         return mtmd_helper_eval_chunks(
             _ptr, lctx, cast(mtmd_input_chunks*) chunks.ptr,
@@ -204,5 +266,9 @@ struct MtmdContext
     }
 
     /// Pointer to the most recently encoded embeddings.
-    float* outputEmbd() @nogc nothrow { return mtmd_get_output_embd(_ptr); }
+    float* outputEmbd() @nogc nothrow
+    {
+        return mtmd_get_output_embd(_ptr);
+    }
+
 }
