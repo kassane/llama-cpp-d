@@ -500,7 +500,25 @@ unittest
 @("mtmd C symbols are reachable")
 unittest
 {
-    import llama.mtmd;
+    import c.mtmd_stubs :
+        mtmd_default_marker,
+        mtmd_context_params_default,
+        mtmd_init_from_file,
+        mtmd_free,
+        mtmd_bitmap_init,
+        mtmd_bitmap_init_from_audio,
+        mtmd_bitmap_free,
+        mtmd_input_chunks_init,
+        mtmd_input_chunks_size,
+        mtmd_input_chunks_free,
+        mtmd_tokenize,
+        mtmd_encode_chunk,
+        mtmd_get_output_embd,
+        mtmd_helper_bitmap_init_from_file,
+        mtmd_helper_bitmap_init_from_buf,
+        mtmd_helper_get_n_tokens,
+        mtmd_helper_get_n_pos,
+        mtmd_helper_eval_chunks;
     auto _0  = &mtmd_default_marker;
     auto _1  = &mtmd_context_params_default;
     auto _2  = &mtmd_init_from_file;
@@ -524,7 +542,7 @@ unittest
 @("mtmd_context_params_default: n_threads is non-negative")
 unittest
 {
-    import llama.mtmd : mtmd_context_params_default;
+    import c.mtmd_stubs : mtmd_context_params_default;
     auto p = mtmd_context_params_default();
     assert(p.n_threads >= 0);
 }
@@ -588,8 +606,353 @@ unittest
 @("MtmdContext: default marker is a non-empty C string")
 unittest
 {
-    import llama.mtmd : mtmd_default_marker;
+    import c.mtmd_stubs : mtmd_default_marker;
     import core.stdc.string : strlen;
     const(char)* m = mtmd_default_marker();
     assert(m !is null && strlen(m) > 0);
+}
+
+// ---------------------------------------------------------------------------
+// SamplerChain: new introspection + lifecycle methods
+// ---------------------------------------------------------------------------
+
+@("SamplerChain: chainN — counts samplers added to chain")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    assert(smpl.chainN() == 0);
+    smpl.greedy();
+    assert(smpl.chainN() == 1);
+    smpl.temp(0.8f);
+    assert(smpl.chainN() == 2);
+}
+
+@("SamplerChain: chainGet — retrieves sampler at index")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.greedy();
+    llama_sampler* s = smpl.chainGet(0);
+    assert(s !is null);
+}
+
+@("SamplerChain: chainRemove — removes and returns sampler")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.greedy();
+    assert(smpl.chainN() == 1);
+    llama_sampler* s = smpl.chainRemove(0);
+    assert(s !is null);
+    assert(smpl.chainN() == 0);
+    llama_sampler_free(s);
+}
+
+@("SamplerChain: getSeed — returns a seed value")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.dist(12345u);
+    // Seed is valid; value is implementation-defined but must not crash.
+    cast(void) smpl.getSeed();
+}
+
+@("SamplerChain: reset — clears state without crash")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.penalties(64, 1.1f).temp(0.8f).dist();
+    smpl.reset();
+}
+
+@("SamplerChain: clone — produces independent copy")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.greedy();
+    assert(smpl.chainN() == 1);
+    {
+        auto copy = smpl.clone();
+        assert(copy.ptr !is null);
+        assert(copy.chainN() == 1);
+    }
+    // Original still valid after clone is destroyed.
+    assert(smpl.chainN() == 1);
+}
+
+@("SamplerChain: adaptiveP — adds sampler without crash")
+unittest
+{
+    auto smpl = SamplerChain.create();
+    smpl.adaptiveP(0.5f, 0.1f);
+    assert(smpl.chainN() == 1);
+}
+
+@("SamplerChain: grammarLazyPatterns — compiles with empty triggers")
+unittest
+{
+    import llama.sampling : SamplerChain;
+    // We don't have a real vocab here, but we can verify the method exists.
+    static assert(__traits(hasMember, SamplerChain, "grammarLazyPatterns"));
+    static assert(__traits(hasMember, SamplerChain, "infill"));
+}
+
+// ---------------------------------------------------------------------------
+// LlamaAdapterLora: new ALora properties compile
+// ---------------------------------------------------------------------------
+
+@("LlamaAdapterLora: ALora properties compile")
+unittest
+{
+    import llama.adapter : LlamaAdapterLora;
+    static assert(__traits(hasMember, LlamaAdapterLora, "nAloraInvocationTokens"));
+    static assert(__traits(hasMember, LlamaAdapterLora, "aloraInvocationTokens"));
+}
+
+// ---------------------------------------------------------------------------
+// LlamaModel: new properties compile
+// ---------------------------------------------------------------------------
+
+@("LlamaModel: ropeFreqScaleTrain and saveToFile compile")
+unittest
+{
+    static assert(__traits(hasMember, LlamaModel, "ropeFreqScaleTrain"));
+    static assert(__traits(hasMember, LlamaModel, "saveToFile"));
+}
+
+// ---------------------------------------------------------------------------
+// LlamaContext: new properties compile
+// ---------------------------------------------------------------------------
+
+@("LlamaContext: new batch/seq/perf properties compile")
+unittest
+{
+    static assert(__traits(hasMember, LlamaContext, "nBatch"));
+    static assert(__traits(hasMember, LlamaContext, "nUbatch"));
+    static assert(__traits(hasMember, LlamaContext, "nSeqMax"));
+    static assert(__traits(hasMember, LlamaContext, "nCtxSeq"));
+    static assert(__traits(hasMember, LlamaContext, "perfReset"));
+    static assert(__traits(hasMember, LlamaContext, "printMemoryBreakdown"));
+    static assert(__traits(hasMember, LlamaContext, "setSampler"));
+}
+
+// ---------------------------------------------------------------------------
+// logging.d
+// ---------------------------------------------------------------------------
+
+@("logging: suppressLogs and systemInfo symbols reachable")
+unittest
+{
+    import llama.logging : suppressLogs, systemInfo;
+    static assert(__traits(compiles, &suppressLogs));
+    static assert(__traits(compiles, &systemInfo));
+}
+
+@("logging: systemInfo returns a non-empty string")
+unittest
+{
+    import llama.logging : systemInfo;
+    loadAllBackends();
+    string info = systemInfo();
+    assert(info.length > 0);
+}
+
+// ---------------------------------------------------------------------------
+// config.d — UDA-driven CLI parsing
+// ---------------------------------------------------------------------------
+
+@("config: @Param UDA is attached to ModelConfig fields")
+unittest
+{
+    import llama.config : Param, ModelConfig;
+    import std.traits : hasUDA;
+    static assert(hasUDA!(ModelConfig.modelPath,   Param));
+    static assert(hasUDA!(ModelConfig.nGpuLayers,  Param));
+    static assert(hasUDA!(ModelConfig.nCtx,        Param));
+    static assert(hasUDA!(ModelConfig.nBatch,      Param));
+    static assert(hasUDA!(ModelConfig.nPredict,    Param));
+    static assert(hasUDA!(ModelConfig.prompt,      Param));
+}
+
+@("config: @Param UDA is attached to SamplingConfig fields")
+unittest
+{
+    import llama.config : Param, SamplingConfig;
+    import std.traits : hasUDA;
+    static assert(hasUDA!(SamplingConfig.temp,          Param));
+    static assert(hasUDA!(SamplingConfig.topK,          Param));
+    static assert(hasUDA!(SamplingConfig.topP,          Param));
+    static assert(hasUDA!(SamplingConfig.minP,          Param));
+    static assert(hasUDA!(SamplingConfig.seed,          Param));
+    static assert(hasUDA!(SamplingConfig.repeatPenalty, Param));
+    static assert(hasUDA!(SamplingConfig.repeatLastN,   Param));
+}
+
+@("config: parseConfig — parses known flags into ModelConfig")
+unittest
+{
+    import llama.config : ModelConfig, parseConfig;
+    ModelConfig cfg;
+    string[] args = ["prog", "-m", "/path/to/model.gguf", "--ngl", "32", "-n", "64"];
+    bool ok = parseConfig(cfg, args);
+    assert(ok);
+    assert(cfg.modelPath   == "/path/to/model.gguf");
+    assert(cfg.nGpuLayers  == 32);
+    assert(cfg.nPredict    == 64);
+}
+
+@("config: parseConfig — parses known flags into SamplingConfig")
+unittest
+{
+    import llama.config : SamplingConfig, parseConfig;
+    SamplingConfig cfg;
+    string[] args = ["prog", "-t", "0.5", "-k", "20", "--top-p", "0.9", "--seed", "42"];
+    bool ok = parseConfig(cfg, args);
+    assert(ok);
+    assert(cfg.temp  == 0.5f);
+    assert(cfg.topK  == 20);
+    assert(cfg.topP  == 0.9f);
+    assert(cfg.seed  == 42u);
+}
+
+@("config: parseConfig — unknown flags remain in args")
+unittest
+{
+    import llama.config : ModelConfig, parseConfig;
+    ModelConfig cfg;
+    string[] args = ["prog", "-m", "/x.gguf", "--unknown-flag", "value"];
+    bool ok = parseConfig(cfg, args);
+    assert(ok);
+    assert(args.length > 1); // unknown flag was not consumed
+}
+
+@("config: buildSamplerChain — greedy when temp == 0")
+unittest
+{
+    import llama.config : SamplingConfig, buildSamplerChain;
+    SamplingConfig cfg;
+    cfg.temp = 0.0f;
+    auto smpl = buildSamplerChain(cfg);
+    assert(smpl.ptr !is null);
+    // greedy adds 1 sampler (no penalties when repeat == 1.0)
+    assert(smpl.chainN() >= 1);
+}
+
+@("config: buildSamplerChain — stochastic chain when temp > 0")
+unittest
+{
+    import llama.config : SamplingConfig, buildSamplerChain;
+    SamplingConfig cfg; // defaults: temp=0.8, topK=40, topP=0.95, minP=0.05
+    auto smpl = buildSamplerChain(cfg);
+    assert(smpl.ptr !is null);
+    // penalties + temp + topK + topP + minP + dist = 6 samplers
+    assert(smpl.chainN() >= 2);
+}
+
+// ---------------------------------------------------------------------------
+// rag.d — VectorStore and helpers
+// ---------------------------------------------------------------------------
+
+@("rag: cosineSimilarity — identical vectors give 1.0")
+unittest
+{
+    import llama.rag : cosineSimilarity;
+    float[4] v = [1.0f, 0.0f, 0.0f, 0.0f];
+    float sim = cosineSimilarity(v[], v[]);
+    assert(sim > 0.999f && sim <= 1.001f);
+}
+
+@("rag: cosineSimilarity — orthogonal vectors give 0.0")
+unittest
+{
+    import llama.rag : cosineSimilarity;
+    float[2] a = [1.0f, 0.0f];
+    float[2] b = [0.0f, 1.0f];
+    float sim = cosineSimilarity(a[], b[]);
+    assert(sim < 1e-6f && sim > -1e-6f);
+}
+
+@("rag: cosineSimilarity — opposite vectors give -1.0")
+unittest
+{
+    import llama.rag : cosineSimilarity;
+    float[3] a = [1.0f, 0.0f, 0.0f];
+    float[3] b = [-1.0f, 0.0f, 0.0f];
+    float sim = cosineSimilarity(a[], b[]);
+    assert(sim < -0.999f);
+}
+
+@("rag: VectorStore — empty store returns no hits")
+unittest
+{
+    import llama.rag : VectorStore;
+    VectorStore store;
+    assert(store.length == 0);
+    float[4] q = [1.0f, 0.0f, 0.0f, 0.0f];
+    auto hits = store.retrieve(q[], 3);
+    assert(hits.length == 0);
+}
+
+@("rag: VectorStore — addDocument and retrieve")
+unittest
+{
+    import llama.rag : VectorStore;
+    VectorStore store;
+    float[4] e1 = [1.0f, 0.0f, 0.0f, 0.0f];
+    float[4] e2 = [0.0f, 1.0f, 0.0f, 0.0f];
+    float[4] e3 = [0.0f, 0.0f, 1.0f, 0.0f];
+    store.addDocument("d1", "Document 1", e1[]);
+    store.addDocument("d2", "Document 2", e2[]);
+    store.addDocument("d3", "Document 3", e3[]);
+    assert(store.length == 3);
+
+    float[4] q = [1.0f, 0.1f, 0.0f, 0.0f];
+    auto hits = store.retrieve(q[], 2);
+    assert(hits.length == 2);
+    // d1 should be the top hit (most similar to q)
+    assert(hits[0].id == "d1");
+    assert(hits[0].score > hits[1].score);
+}
+
+@("rag: VectorStore — topK larger than store returns all docs")
+unittest
+{
+    import llama.rag : VectorStore;
+    VectorStore store;
+    float[2] e = [1.0f, 0.0f];
+    store.addDocument("a", "A", e[]);
+    store.addDocument("b", "B", e[]);
+    auto hits = store.retrieve(e[], 10);
+    assert(hits.length == 2);
+}
+
+@("rag: VectorStore — clear removes all documents")
+unittest
+{
+    import llama.rag : VectorStore;
+    VectorStore store;
+    float[2] e = [1.0f, 0.0f];
+    store.addDocument("x", "X", e[]);
+    assert(store.length == 1);
+    store.clear();
+    assert(store.length == 0);
+}
+
+@("rag: buildRagPrompt — assembles expected sections")
+unittest
+{
+    import llama.rag : Hit, buildRagPrompt;
+    import std.string : indexOf;
+    Hit[2] hits;
+    hits[0] = Hit("d1", "The sky is blue.", 0.9f);
+    hits[1] = Hit("d2", "Water is wet.",    0.7f);
+    string prompt = buildRagPrompt(hits[], "What color is the sky?");
+    assert(prompt.indexOf("Context:")               >= 0);
+    assert(prompt.indexOf("[1]")                    >= 0);
+    assert(prompt.indexOf("The sky is blue.")       >= 0);
+    assert(prompt.indexOf("[2]")                    >= 0);
+    assert(prompt.indexOf("Water is wet.")          >= 0);
+    assert(prompt.indexOf("Question:")              >= 0);
+    assert(prompt.indexOf("What color is the sky?") >= 0);
+    assert(prompt.indexOf("Answer:")                >= 0);
 }

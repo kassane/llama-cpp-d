@@ -15,7 +15,6 @@ module multimodal;
 import llama;
 import llama.mtmd;
 import std.stdio  : write, writeln, writefln, stderr;
-import std.conv   : to;
 import std.string : fromStringz;
 import core.stdc.locale : setlocale, LC_NUMERIC;
 import core.stdc.stdio  : printf;
@@ -26,58 +25,55 @@ int main(string[] args) @trusted
 {
     setlocale(LC_NUMERIC, "C");
 
-    string modelPath;
+    ModelConfig    mcfg;
+    SamplingConfig scfg;
+
+    mcfg.nPredict = 512;
+    mcfg.prompt   = "Describe the image in detail.";
+
+    if (!parseConfig(mcfg, args, "model options:") ||
+        !parseConfig(scfg, args, "sampling options:"))
+        return 0;
+
+    // Example-specific flags not covered by ModelConfig.
     string mmprojPath;
     string imagePath;
-    string prompt   = "Describe the image in detail.";
-    int    ngl      = 99;
-    int    nPredict = 512;
-    int    nBatch   = 512;
-    bool   useGpu   = true;
+    bool   useGpu = true;
 
-    for (int i = 1; i < cast(int) args.length; i++)
+    for (int i = 1; i < cast(int) args.length; )
     {
-        switch (args[i])
+        if (args[i] == "--mmproj" && i + 1 < cast(int) args.length)
         {
-            case "-m":
-                if (++i < cast(int) args.length) modelPath   = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "--mmproj":
-                if (++i < cast(int) args.length) mmprojPath  = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-i":
-                if (++i < cast(int) args.length) imagePath   = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-n":
-                if (++i < cast(int) args.length) nPredict    = args[i].to!int;
-                else return printUsage(args[0]);
-                break;
-            case "-ngl":
-                if (++i < cast(int) args.length) ngl         = args[i].to!int;
-                else return printUsage(args[0]);
-                break;
-            case "--no-gpu":
-                useGpu = false;
-                break;
-            default:
-                prompt = args[i];
-                break;
+            mmprojPath = args[i + 1];
+            args = args[0 .. i] ~ args[i + 2 .. $];
         }
+        else if (args[i] == "-i" && i + 1 < cast(int) args.length)
+        {
+            imagePath = args[i + 1];
+            args = args[0 .. i] ~ args[i + 2 .. $];
+        }
+        else if (args[i] == "--no-gpu")
+        {
+            useGpu = false;
+            args = args[0 .. i] ~ args[i + 1 .. $];
+        }
+        else
+            i++;
     }
 
-    if (modelPath.length == 0 || mmprojPath.length == 0)
+    // Remaining positional arg overrides the prompt.
+    if (args.length > 1) mcfg.prompt = args[1];
+
+    if (mcfg.modelPath.length == 0 || mmprojPath.length == 0)
         return printUsage(args[0]);
 
     // ── Backend + model ──────────────────────────────────────────────────────
     loadAllBackends();
 
-    auto model = LlamaModel.loadFromFile(modelPath, ngl);
+    auto model = LlamaModel.loadFromFile(mcfg.modelPath, mcfg.nGpuLayers);
     if (!model)
     {
-        stderr.writeln("error: failed to load language model '", modelPath, "'");
+        stderr.writeln("error: failed to load language model '", mcfg.modelPath, "'");
         return 1;
     }
 
@@ -96,12 +92,12 @@ int main(string[] args) @trusted
     // ── Build prompt with optional media marker ──────────────────────────────
     bool   haveImage  = imagePath.length > 0;
     string marker     = fromStringz(mtmd_default_marker()).idup;
-    string fullPrompt = haveImage ? marker ~ "\n" ~ prompt : prompt;
+    string fullPrompt = haveImage ? marker ~ "\n" ~ mcfg.prompt : mcfg.prompt;
 
     // ── Tokenise ─────────────────────────────────────────────────────────────
-    auto chunks   = InputChunks.create();
-    auto inputTxt = mtmd_input_text(&fullPrompt[0], /*add_special=*/true,
-                                                    /*parse_special=*/true);
+    auto chunks       = InputChunks.create();
+    auto inputTxt     = mtmd_input_text(&fullPrompt[0], /*add_special=*/true,
+                                                        /*parse_special=*/true);
 
     if (haveImage)
     {
@@ -129,10 +125,10 @@ int main(string[] args) @trusted
     }
 
     // ── Context ──────────────────────────────────────────────────────────────
-    uint nCtxNeeded = cast(uint)(chunks.nTokens + nPredict);
+    uint nCtxNeeded = cast(uint)(chunks.nTokens + mcfg.nPredict);
     auto ctx = LlamaContext.fromModel(model,
                    nCtxNeeded,
-                   cast(uint) nBatch);
+                   mcfg.nBatch);
     if (!ctx)
     {
         stderr.writeln("error: failed to create llama_context");
@@ -142,7 +138,7 @@ int main(string[] args) @trusted
     // ── Eval all chunks (text + image embeddings) ────────────────────────────
     llama_pos nPast;
     if (auto err = mtmd.evalChunks(ctx.ptr, chunks, 0, /*seq_id=*/0,
-                                   nBatch, /*logits_last=*/true, nPast))
+                                   mcfg.nBatch, /*logits_last=*/true, nPast))
     {
         stderr.writefln("error: chunk eval failed (code %d)", err);
         return 1;
@@ -151,12 +147,11 @@ int main(string[] args) @trusted
     // ── Generation ───────────────────────────────────────────────────────────
     const vocab = model.vocab;
 
-    auto smpl = SamplerChain.create();
-    smpl.temp(0.8f).topK(40).topP(0.95f).dist();
+    auto smpl = buildSamplerChain(scfg);
 
     llama_token[1] nextBuf;
 
-    for (int gen = 0; gen < nPredict; gen++)
+    for (int gen = 0; gen < mcfg.nPredict; gen++)
     {
         auto tok = smpl.sample(ctx);
         if (isEog(vocab, tok)) break;
@@ -165,7 +160,6 @@ int main(string[] args) @trusted
 
         import std.stdio : stdout;
         stdout.flush();
-
         smpl.accept(tok);
         nextBuf[0] = tok;
         auto batch = batchGetOne(nextBuf[]);
@@ -191,16 +185,18 @@ int main(string[] args) @trusted
 int printUsage(string prog) @trusted nothrow
 {
     printf(
-        "\nusage: %s -m model.gguf --mmproj mmproj.gguf\n" ~
-        "          [-i image.jpg] [-n n_predict] [-ngl n_gpu_layers]\n" ~
-        "          [--no-gpu] [prompt]\n\n" ~
-        "  -m       path to the GGUF language model\n" ~
-        "  --mmproj path to the multimodal projector GGUF\n" ~
-        "  -i       input image or audio file (optional)\n" ~
-        "  -n       number of tokens to predict (default: 512)\n" ~
-        "  -ngl     number of GPU layers (default: 99)\n" ~
-        "  --no-gpu run projector on CPU only\n" ~
-        "  prompt   text prompt (default: 'Describe the image in detail.')\n\n",
+        "\nusage: %s -m model.gguf --mmproj mmproj.gguf [options] [prompt]\n\n" ~
+        "  -m        path to the GGUF language model\n" ~
+        "  --mmproj  path to the multimodal projector GGUF\n" ~
+        "  -i        input image or audio file (optional)\n" ~
+        "  -ngl      GPU layers (default: 99)\n" ~
+        "  -n        tokens to predict (default: 512)\n" ~
+        "  -b        batch size (default: 512)\n" ~
+        "  -t        temperature (default: 0.8; 0 = greedy)\n" ~
+        "  -k        top-K (default: 40)\n" ~
+        "  --top-p   top-P nucleus (default: 0.95)\n" ~
+        "  --no-gpu  run projector on CPU only\n" ~
+        "  prompt    text prompt (default: 'Describe the image in detail.')\n\n",
         prog.ptr);
     return 1;
 }

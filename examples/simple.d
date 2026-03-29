@@ -6,7 +6,6 @@ module simple;
 
 import llama;
 import std.stdio  : write, writeln, writefln, stderr;
-import std.conv   : to;
 import core.stdc.locale : setlocale, LC_NUMERIC;
 import core.stdc.stdio  : printf;
 
@@ -14,74 +13,43 @@ int main(string[] args)
 {
     setlocale(LC_NUMERIC, "C");
 
-    string modelPath;
-    string prompt   = "Hello my name is";
-    int    ngl      = 99;
-    int    nPredict = 32;
+    ModelConfig    mcfg;
+    SamplingConfig scfg;
 
-    for (int i = 1; i < cast(int) args.length; i++)
-    {
-        switch (args[i])
-        {
-            case "-m":
-                if (++i < cast(int) args.length) modelPath = args[i];
-                else return printUsage(args[0]);
-                break;
-            case "-n":
-                if (++i < cast(int) args.length) nPredict = args[i].to!int;
-                else return printUsage(args[0]);
-                break;
-            case "-ngl":
-                if (++i < cast(int) args.length) ngl = args[i].to!int;
-                else return printUsage(args[0]);
-                break;
-            default:
-                prompt = args[i];
-                break;
-        }
-    }
-    if (modelPath.length == 0) return printUsage(args[0]);
+    if (!parseConfig(mcfg, args, "model options:") ||
+        !parseConfig(scfg, args, "sampling options:"))
+        return 0;
+
+    // Remaining positional argument overrides the -p prompt.
+    if (args.length > 1) mcfg.prompt = args[1];
+
+    if (mcfg.modelPath.length == 0)
+        return printUsage(args[0]);
 
     loadAllBackends();
 
-    auto model = LlamaModel.loadFromFile(modelPath, ngl);
-    if (!model)
-    {
-        stderr.writeln("error: unable to load model '", modelPath, "'");
-        return 1;
-    }
+    auto model = LlamaModel.loadFromFile(mcfg.modelPath, mcfg.nGpuLayers);
+    if (!model) { stderr.writeln("error: cannot load model"); return 1; }
 
     const vocab = model.vocab;
 
-    auto tokens = tokenize(vocab, prompt);
-    if (tokens.length == 0)
-    {
-        stderr.writeln("error: failed to tokenize prompt");
-        return 1;
-    }
+    auto tokens = tokenize(vocab, mcfg.prompt);
+    if (tokens.length == 0) { stderr.writeln("error: tokenize failed"); return 1; }
 
-    // Print prompt as decoded text.
+    // Echo prompt.
     foreach (t; tokens) write(tokenToString(vocab, t));
 
     auto ctx = LlamaContext.fromModel(model,
-                   cast(uint)(tokens.length + nPredict - 1),
-                   cast(uint) tokens.length);
-    if (!ctx)
-    {
-        stderr.writeln("error: failed to create llama_context");
-        return 1;
-    }
+                   cast(uint)(tokens.length + mcfg.nPredict - 1),
+                   mcfg.nBatch);
+    if (!ctx) { stderr.writeln("error: cannot create context"); return 1; }
 
-    // Two-statement form: avoids copy-constructing the non-copyable SamplerChain.
-    auto smpl = SamplerChain.create();
-    smpl.greedy();
-
+    auto smpl  = buildSamplerChain(scfg);
     auto batch = batchGetOne(tokens);
 
     if (model.hasEncoder)
     {
         if (ctx.encode(batch)) { stderr.writeln("error: encode failed"); return 1; }
-        // Stack array: avoids pointer-slicing under -preview=safer.
         llama_token[1] startBuf = [model.decoderStartToken];
         batch = batchGetOne(startBuf[]);
     }
@@ -89,14 +57,15 @@ int main(string[] args)
     import core.time : MonoTime;
     auto tStart = MonoTime.currTime;
     int  nDecode;
-    llama_token[1] nextBuf; // reusable single-token buffer
+    llama_token[1] nextBuf;
 
-    for (int nPos; nPos + batch.n_tokens < cast(int) tokens.length + nPredict; )
+    for (int nPos; nPos + batch.n_tokens < cast(int) tokens.length + mcfg.nPredict; )
     {
         if (ctx.decode(batch)) { stderr.writeln("error: decode failed"); return 1; }
         nPos += batch.n_tokens;
 
         auto newTok = smpl.sample(ctx);
+        smpl.accept(newTok);
         if (isEog(vocab, newTok)) break;
 
         write(tokenToString(vocab, newTok));
@@ -110,7 +79,7 @@ int main(string[] args)
     }
     writeln();
 
-    // Integer arithmetic: avoids writefln+double template bug under -preview=all.
+    // Integer arithmetic avoids writefln+double template bug under -preview=all.
     long elapsedMs = (MonoTime.currTime - tStart).total!"msecs";
     long tokPerSec = (nDecode > 0 && elapsedMs > 0) ? nDecode * 1000 / elapsedMs : 0;
 
@@ -126,7 +95,19 @@ int main(string[] args)
 
 int printUsage(string prog) @trusted nothrow
 {
-    printf("\nusage: %s -m model.gguf [-n n_predict] [-ngl n_gpu_layers] [prompt]\n\n",
-           prog.ptr);
+    printf(
+        "\nusage: %s -m model.gguf [options] [prompt]\n\n"
+        ~ "  -m        model path (.gguf)\n"
+        ~ "  -ngl      GPU layers (default: 99)\n"
+        ~ "  -c        context size (default: 0 = model default)\n"
+        ~ "  -b        batch size (default: 512)\n"
+        ~ "  -n        tokens to predict (default: 128)\n"
+        ~ "  -p        prompt text (or pass as positional arg)\n"
+        ~ "  -t        temperature (default: 0.8; 0 = greedy)\n"
+        ~ "  -k        top-K (default: 40)\n"
+        ~ "  --top-p   top-P nucleus (default: 0.95)\n"
+        ~ "  --min-p   min-P floor (default: 0.05)\n"
+        ~ "  --seed    RNG seed\n\n",
+        prog.ptr);
     return 1;
 }

@@ -177,4 +177,95 @@ struct SamplerChain
     void accept(llama_token token) @nogc nothrow { llama_sampler_accept(_ptr, token); }
 
     void printPerf() @nogc nothrow { llama_perf_sampler_print(_ptr); }
+    void perfReset() @nogc nothrow { llama_perf_sampler_reset(_ptr); }
+
+    // ── Chain introspection ───────────────────────────────────────────────────
+
+    /// Number of samplers in the chain.
+    int chainN() const @trusted @nogc nothrow { return llama_sampler_chain_n(cast(llama_sampler*) _ptr); }
+
+    /// Sampler at position `i` in the chain (raw pointer; owned by the chain).
+    llama_sampler* chainGet(int i) @nogc nothrow
+    {
+        return llama_sampler_chain_get(_ptr, i);
+    }
+
+    /++
+    Remove and return the sampler at position `i`.
+    The caller takes ownership and must call `llama_sampler_free` when done.
+    +/
+    llama_sampler* chainRemove(int i) @nogc nothrow
+    {
+        return llama_sampler_chain_remove(_ptr, i);
+    }
+
+    // ── Sampler lifecycle ─────────────────────────────────────────────────────
+
+    /// RNG seed used by this sampler (LLAMA_DEFAULT_SEED if not applicable).
+    uint getSeed() const @trusted @nogc nothrow { return llama_sampler_get_seed(cast(llama_sampler*) _ptr); }
+
+    /// Reset the sampler state (e.g. clears repetition history).
+    void reset() @nogc nothrow { llama_sampler_reset(_ptr); }
+
+    /++
+    Clone the sampler chain into a new independent `SamplerChain`.
+    The clone starts with the same configuration and state.
+    +/
+    SamplerChain clone() const @trusted @nogc nothrow
+    {
+        return SamplerChain(llama_sampler_clone(cast(llama_sampler*) _ptr));
+    }
+
+    // ── Additional built-in samplers ─────────────────────────────────────────
+
+    /++
+    Adds adaptive-P sampling.
+    Selects tokens near `target` probability using an exponential moving average.
+    Must be the last sampler in the chain (like `dist` or `greedy`).
+    `target` in [0, 1]; `decay` in [0, 0.99].
+    +/
+    ref SamplerChain adaptiveP(float target, float decay,
+                               uint seed = LLAMA_DEFAULT_SEED) @nogc nothrow return
+    {
+        llama_sampler_chain_add(_ptr, llama_sampler_init_adaptive_p(target, decay, seed));
+        return this;
+    }
+
+    /++
+    Adds fill-in-the-middle (FIM) infill sampling.
+    Designed for code completion; applies EOG bias and prefix merging.
+    Use after top-K / top-P.
+    +/
+    ref SamplerChain infill(const(llama_vocab)* vocab) @trusted @nogc nothrow return
+    {
+        llama_sampler_chain_add(_ptr,
+            llama_sampler_init_infill(cast(llama_vocab*) vocab));
+        return this;
+    }
+
+    /++
+    Adds lazy grammar-constrained sampling.
+    Grammar is only activated once a `triggerPattern` match or `triggerToken` is seen.
+    `triggerPatterns` are regex-like patterns matched from the start of generated text.
+    `triggerTokens` activate the grammar immediately when sampled.
+    +/
+    ref SamplerChain grammarLazyPatterns(
+        const(llama_vocab)* vocab,
+        string grammarStr,
+        string grammarRoot = "root",
+        string[] triggerPatterns = [],
+        const(llama_token)[] triggerTokens = []) @trusted return
+    {
+        import std.string : toStringz;
+        auto patPtrs = new const(char)*[](triggerPatterns.length);
+        foreach (i, p; triggerPatterns)
+            patPtrs[i] = p.toStringz;
+        llama_sampler_chain_add(_ptr,
+            llama_sampler_init_grammar_lazy_patterns(
+                cast(llama_vocab*) vocab,
+                grammarStr.toStringz, grammarRoot.toStringz,
+                patPtrs.ptr, patPtrs.length,
+                triggerTokens.ptr, triggerTokens.length));
+        return this;
+    }
 }

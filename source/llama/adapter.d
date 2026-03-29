@@ -3,40 +3,26 @@ module llama.adapter;
 import llama.llama;
 import llama.model : LlamaModel;
 import llama.ctx  : LlamaContext;
+import llama.owned;
 
 /++
 A LoRA adapter loaded from a GGUF file.
-Freed automatically on destruction; you may also call `free()` early.
+Freed automatically on destruction.
 The associated model must remain alive for the adapter's lifetime.
 +/
 struct LlamaAdapterLora
 {
-    private llama_adapter_lora* _adapter;
-
-    @disable this();
-    @disable this(this);
-
-    private this(llama_adapter_lora* a) @nogc nothrow { _adapter = a; }
-
-    ~this() @nogc nothrow
-    {
-        if (_adapter) { llama_adapter_lora_free(_adapter); _adapter = null; }
-    }
-
-    bool opCast(T : bool)() @nogc nothrow { return _adapter !is null; }
-
-    /// Raw C pointer.
-    @property llama_adapter_lora* ptr() @trusted @nogc nothrow { return _adapter; }
+    mixin Owned!(llama_adapter_lora, llama_adapter_lora_free);
 
     /++ Number of GGUF metadata entries. +/
-    @property int metaCount() @nogc nothrow { return llama_adapter_meta_count(_adapter); }
+    @property int metaCount() @nogc nothrow { return llama_adapter_meta_count(_ptr); }
 
     /// Metadata value by key. Returns `""` on failure.
     string metaVal(string key) @trusted
     {
         import std.string : toStringz;
         char[4096] buf;
-        int n = llama_adapter_meta_val_str(_adapter, key.toStringz, buf.ptr, buf.length);
+        int n = llama_adapter_meta_val_str(_ptr, key.toStringz, buf.ptr, buf.length);
         return n >= 0 ? buf[0 .. n].idup : "";
     }
 
@@ -44,7 +30,7 @@ struct LlamaAdapterLora
     string metaKeyAt(int index) @trusted
     {
         char[512] buf;
-        int n = llama_adapter_meta_key_by_index(_adapter, index, buf.ptr, buf.length);
+        int n = llama_adapter_meta_key_by_index(_ptr, index, buf.ptr, buf.length);
         return n >= 0 ? buf[0 .. n].idup : "";
     }
 
@@ -52,14 +38,31 @@ struct LlamaAdapterLora
     string metaValAt(int index) @trusted
     {
         char[4096] buf;
-        int n = llama_adapter_meta_val_str_by_index(_adapter, index, buf.ptr, buf.length);
+        int n = llama_adapter_meta_val_str_by_index(_ptr, index, buf.ptr, buf.length);
         return n >= 0 ? buf[0 .. n].idup : "";
     }
 
-    /// Free the adapter early (safe to call multiple times).
-    void free() @nogc nothrow
+    // ── ALora (activation LoRA) ───────────────────────────────────────────────
+
+    /++
+    Number of invocation tokens stored in the adapter when it is an ALora adapter.
+    Returns 0 for ordinary LoRA adapters.
+    +/
+    @property ulong nAloraInvocationTokens() @nogc nothrow
     {
-        if (_adapter) { llama_adapter_lora_free(_adapter); _adapter = null; }
+        return llama_adapter_get_alora_n_invocation_tokens(_ptr);
+    }
+
+    /++
+    Invocation token sequence for ALora adapters.
+    Returns an empty slice for ordinary LoRA adapters.
+    The memory is owned by the adapter; do not free or outlive it.
+    +/
+    @property const(llama_token)[] aloraInvocationTokens() @trusted @nogc nothrow
+    {
+        ulong n = nAloraInvocationTokens();
+        if (n == 0) return null;
+        return llama_adapter_get_alora_invocation_tokens(_ptr)[0 .. n];
     }
 }
 
