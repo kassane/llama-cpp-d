@@ -54,6 +54,7 @@ jobs:
           dub build :embedding
           dub build :save-load-state
           dub build :multimodal
+          dub build :chat
 
       # ── Model download + example runs (Posix only) ──────────────────────────
       # Skipped on Windows: CPU-only inference on Windows CI runners is slow.
@@ -100,7 +101,7 @@ jobs:
       matrix:
         include:
           # ── Linux ────────────────────────────────────────────────────────────
-          - {os: ubuntu-latest, compiler: ldc-master, config: mtmd}
+          - {os: ubuntu-latest, compiler: ldc-master, config: mtmd-cpu}
           - {os: ubuntu-latest, compiler: ldc-master, config: openblas}
           - {os: ubuntu-latest, compiler: ldc-master, config: openmp}
           - {os: ubuntu-latest, compiler: ldc-master, config: vulkan}
