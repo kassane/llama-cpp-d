@@ -87,14 +87,7 @@ struct SamplingConfig
     int repeatLastN = 64;
 }
 
-/++
-Build the getopt argument list for all `@Param`-annotated fields of `T`.
-
-Runs entirely at compile time (CTFE).  The result is a comma-separated
-string like:
-    `"m|modelPath", "Model path (.gguf file)", &cfg.modelPath,`
-which is then `mixin`'d inside `parseConfig`.
-+/
+/// Build the getopt argument list for all `@Param`-annotated fields of `T` (CTFE).
 private string buildGetoptArgs(T)()
 {
     import std.traits : hasUDA, getUDAs, FieldNameTuple;

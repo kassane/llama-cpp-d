@@ -50,16 +50,7 @@ void batchClear(ref llama_batch batch) @nogc nothrow
     batch.n_tokens = 0;
 }
 
-/++
-Append one token to a pre-allocated batch (created via `allocBatch`).
-
-Params:
-    batch   = target batch; must have been allocated with `allocBatch`
-    id      = token id
-    pos     = position in the sequence
-    seqId   = sequence this token belongs to
-    logits  = request logit output for this position
-+/
+/// Append one token (`id`, `pos`, `seqId`, `logits`) to a pre-allocated batch.
 void batchAdd(ref llama_batch batch,
               llama_token     id,
               llama_pos       pos,

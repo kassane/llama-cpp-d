@@ -6,7 +6,7 @@ matching the behaviour of the llama.cpp CLI `--chat-template-kwargs` flag.
 
 Usage:
 ---
-import llama, llama.common_ext;
+import llama;
 
 auto tmpls = ChatTemplates.fromModel(model.ptr);
 if (tmpls && tmpls.supportsThinking)
@@ -21,6 +21,17 @@ import llama.llama : llama_model, llama_chat_message;
 
 // Private: common_shims.h includes llama.h → would duplicate llama symbols.
 private import c.common_stubs;
+
+// ── ChatParams ────────────────────────────────────────────────────────────
+struct ChatParams
+{
+    string prompt;
+    string grammar;
+    bool grammarLazy;
+    string thinkingStart; /// e.g. "<think>", empty if not supported
+    string thinkingEnd; /// e.g. "</think>", empty if not supported
+    string[] stops;
+}
 
 // ── ChatTemplates ─────────────────────────────────────────────────────────
 
@@ -82,16 +93,50 @@ struct ChatTemplates
     }
 
     /++
-    Apply the chat template.
+    Apply the chat template and return the full `ChatParams`.
 
     Params:
       msgs            = Conversation history as `llama_chat_message[]`.
       enableThinking  = -1 model default, 0 disable, 1 enable.
       addAss          = Append the assistant-turn prefix (for generation).
 
-    Returns the rendered prompt string.
+    Returns a `ChatParams` with prompt, grammar, thinking tags and stop strings.
     +/
-    string apply(
+    ChatParams apply(
+        scope const(llama_chat_message)[] msgs,
+        int enableThinking = -1,
+        bool addAss = true) @trusted
+    {
+        if (!_ptr || msgs.length == 0)
+            return ChatParams.init;
+
+        auto mp = cast(llama_chat_message*) msgs.ptr;
+        lcpp_chat_params* p = lcpp_chat_templates_apply_full(
+            _ptr, mp, msgs.length, enableThinking, addAss);
+        if (!p)
+            return ChatParams.init;
+        scope (exit)
+            lcpp_chat_params_free(p);
+
+        import std.string : fromStringz;
+
+        ChatParams r;
+        r.prompt = p.prompt ? p.prompt.fromStringz.idup : "";
+        r.grammar = p.grammar ? p.grammar.fromStringz.idup : "";
+        r.grammarLazy = p.grammar_lazy != 0;
+        r.thinkingStart = p.thinking_start ? p.thinking_start.fromStringz.idup : "";
+        r.thinkingEnd = p.thinking_end ? p.thinking_end.fromStringz.idup : "";
+        r.stops.length = p.n_stops;
+        foreach (i; 0 .. p.n_stops)
+            r.stops[i] = p.stops[i] ? p.stops[i].fromStringz.idup : "";
+        return r;
+    }
+
+    /++
+    Convenience helper — returns only the rendered prompt string.
+    Use `apply` when you also need grammar or thinking tags.
+    +/
+    string applyPrompt(
         scope const(llama_chat_message)[] msgs,
         int enableThinking = -1,
         bool addAss = true) @trusted
@@ -100,7 +145,6 @@ struct ChatTemplates
             return "";
 
         auto mp = cast(llama_chat_message*) msgs.ptr;
-        // First call: query required size.
         int n = lcpp_chat_templates_apply(
             _ptr, mp, msgs.length, enableThinking, addAss, null, 0);
         if (n <= 0)
