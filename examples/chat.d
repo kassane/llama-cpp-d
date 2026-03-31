@@ -29,8 +29,7 @@ int main(string[] args)
     ModelConfig mcfg;
     SamplingConfig scfg;
     string systemPrompt = "You are a helpful assistant.";
-    bool noThink = false; // suppress <think>…</think> blocks in output
-    bool forceThink = false; // append /think suffix to each user message
+    int enableThinking = -1; // -1 = default, 0 = disable CoT, 1 = force CoT
 
     // Extra flags not covered by the standard configs.
     string[] rest = args.dup;
@@ -56,15 +55,9 @@ int main(string[] args)
                 {
                     string tail = kw[colon + 1 .. $];
                     if (tail.indexOf("true") >= 0)
-                    {
-                        forceThink = true;
-                        noThink = false;
-                    }
+                        enableThinking = 1;
                     else if (tail.indexOf("false") >= 0)
-                    {
-                        noThink = true;
-                        forceThink = false;
-                    }
+                        enableThinking = 0;
                 }
             }
             rest = rest[0 .. i] ~ rest[i + 2 .. $];
@@ -136,7 +129,6 @@ int main(string[] args)
         // Apply template with proper enable_thinking kwarg.
         // apply returns prompt + grammar + thinking tags.
         history ~= llama_chat_message("user", line.toStringz);
-        int enableThinking = forceThink ? 1 : noThink ? 0 : -1;
         auto params = tmpls.apply(history, enableThinking, /*addAss=*/ true);
         if (params.prompt.length == 0)
         {
@@ -208,16 +200,16 @@ int main(string[] args)
             if (thinkStart.length && piece == thinkStart)
             {
                 inThink = true;
-                if (noThink)
+                if (enableThinking == 0)
                     goto next;
             }
             else if (thinkEnd.length && piece == thinkEnd)
             {
                 inThink = false;
-                if (noThink)
+                if (enableThinking == 0)
                     goto next;
             }
-            else if (noThink && inThink)
+            else if (enableThinking == 0 && inThink)
                 goto next;
 
             write(piece);
