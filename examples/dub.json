@@ -113,7 +113,7 @@
                 {
                     "name": "default",
                     "subConfigurations": {
-                        "llama-cpp-d": "mtmd"
+                        "llama-cpp-d": "mtmd-cpu"
                     }
                 },
                 {
@@ -193,6 +193,51 @@
             "targetPath": "build",
             "sourceFiles": [
                 "save-load-state.d"
+            ],
+            "dependencies": {
+                "llama-cpp-d": {
+                    "path": ".."
+                }
+            },
+            "configurations": [
+                {
+                    "name": "default",
+                    "subConfigurations": {
+                        "llama-cpp-d": "default"
+                    }
+                },
+                {
+                    "name": "cuda",
+                    "subConfigurations": {
+                        "llama-cpp-d": "cuda"
+                    }
+                },
+                {
+                    "name": "vulkan",
+                    "subConfigurations": {
+                        "llama-cpp-d": "vulkan"
+                    }
+                },
+                {
+                    "name": "metal",
+                    "subConfigurations": {
+                        "llama-cpp-d": "metal"
+                    }
+                },
+                {
+                    "name": "hipblas",
+                    "subConfigurations": {
+                        "llama-cpp-d": "hipblas"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "chat",
+            "targetType": "executable",
+            "targetPath": "build",
+            "sourceFiles": [
+                "chat.d"
             ],
             "dependencies": {
                 "llama-cpp-d": {

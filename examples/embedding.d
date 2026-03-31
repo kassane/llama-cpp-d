@@ -132,12 +132,12 @@ int main(string[] args)
     foreach (i, prompt; prompts)
         printEmbeddingRow(prompt, i, embeddings[i], nEmbd);
 
-    // Pairwise cosine similarity (vectors are already unit-length).
+    // Pairwise cosine similarity via rag.d helper (handles un-normalised vectors).
     if (prompts.length >= 2)
     {
-        double dot = 0;
-        foreach (j; 0 .. nEmbd) dot += embeddings[0][j] * embeddings[1][j];
-        printCosine(dot);
+        import llama.rag : cosineSimilarity;
+        float sim = cosineSimilarity(embeddings[0], embeddings[1]);
+        printCosine(cast(double) sim);
     }
 
     return 0;

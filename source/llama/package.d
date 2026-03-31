@@ -14,3 +14,8 @@ public import llama.sampling;
 public import llama.chat;
 public import llama.adapter;
 public import llama.mtmd;
+public import llama.logging;
+public import llama.config;
+public import llama.rag;
+public import llama.opt;
+public import llama.common_ext;

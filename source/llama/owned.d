@@ -1,21 +1,5 @@
-/++
-Mixin template for single-ownership wrappers around C pointers.
-
-Injects the boilerplate shared by all handle types: a private `_ptr` field,
-a private constructor, a destructor that calls `freeFn`, copy-disable
-directives, and `bool` / `ptr` conversions.
-
-Usage:
----
-struct LlamaModel {
-    mixin Owned!(llama_model, llama_model_free);
-    // add factory methods and domain-specific properties below
-}
----
-
-The injected private constructor is accessible inside the hosting struct, so
-factory static methods can return `StructName(rawPtr)` normally.
-+/
+/// Mixin template for single-ownership wrappers around C pointers.
+/// Injects: `_ptr` field, private constructor, destructor (`freeFn`), copy-disable, `bool`/`ptr` conversions.
 module llama.owned;
 
 /++

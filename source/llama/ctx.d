@@ -46,7 +46,11 @@ struct LlamaContext
         return llama_get_logits_ith(_ptr, idx)[0 .. nVocab];
     }
 
-    @property uint nCtx() @nogc nothrow { return llama_n_ctx(_ptr); } /// Context window size in tokens.
+    @property uint nCtx()    @nogc nothrow { return llama_n_ctx(_ptr); }     /// Context window size in tokens.
+    @property uint nBatch()  @nogc nothrow { return llama_n_batch(_ptr); }   /// Logical batch size.
+    @property uint nUbatch() @nogc nothrow { return llama_n_ubatch(_ptr); }  /// Physical micro-batch size.
+    @property uint nSeqMax() @nogc nothrow { return llama_n_seq_max(_ptr); } /// Maximum parallel sequences.
+    @property uint nCtxSeq() @nogc nothrow { return llama_n_ctx_seq(_ptr); } /// Per-sequence context size.
 
     /// Active pooling type as an int (compare to `LLAMA_POOLING_TYPE_*` constants).
     @property int poolingType() @nogc nothrow { return cast(int) llama_pooling_type(_ptr); }
@@ -153,4 +157,18 @@ struct LlamaContext
     }
 
     void printPerf() @nogc nothrow { llama_perf_context_print(_ptr); }
+    void perfReset() @nogc nothrow { llama_perf_context_reset(_ptr); }
+
+    /// Print a per-device memory-use breakdown via the log system.
+    void printMemoryBreakdown() @nogc nothrow { llama_memory_breakdown_print(_ptr); }
+
+    /++
+    Assign a per-sequence sampler for autoregressive decoding.
+    The context does not take ownership of `smpl`; the caller must keep it alive.
+    Returns `true` on success.
+    +/
+    bool setSampler(llama_seq_id seqId, llama_sampler* smpl) @nogc nothrow
+    {
+        return llama_set_sampler(_ptr, seqId, smpl);
+    }
 }

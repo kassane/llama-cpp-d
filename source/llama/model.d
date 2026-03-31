@@ -115,4 +115,20 @@ struct LlamaModel
         int n = llama_model_meta_val_str(_ptr, key.toStringz, buf.ptr, buf.length);
         return n >= 0 ? buf[0 .. n].idup : "";
     }
+
+    /// RoPE frequency scale used during training (1.0 for most models).
+    @property float ropeFreqScaleTrain() @nogc nothrow
+    {
+        return llama_model_rope_freq_scale_train(_ptr);
+    }
+
+    /++
+    Save the model weights to a GGUF file at `path`.
+    Pass `params = null` to use default quantization parameters.
+    +/
+    void saveToFile(string path) @trusted nothrow
+    {
+        import std.string : toStringz;
+        llama_model_save_to_file(_ptr, path.toStringz);
+    }
 }
